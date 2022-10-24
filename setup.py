@@ -27,7 +27,9 @@ setuptools.setup(
         'matplotlib',
         'jax[cpu]'
     ],
-    extras_require = {},
+    extras_require = {
+        'FEA Solver': ['PyNiteFEA']
+    },
     include_package_data = True,
     python_requires=">=3.7",
 )
