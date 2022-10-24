@@ -7,7 +7,7 @@ Please share our project with others and cite us if you find it interesting and 
 We have a [preprint]() under review where you can find details regarding this framework.
 Cite us using:
 ```bibtex
-Availabe soon
+Available soon
 ```
 ## Features
 * Automatic differentiation (AD): an easy and accurate way for gradient evaluation. The implementation of AD avoids deriving derivatives manually or trauncation errors from numerical differentiation.
