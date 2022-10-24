@@ -13,6 +13,7 @@ setuptools.setup(
     long_description_content_type="text/markdown",
     url="https://github.com/GaoyuanWu/JaxSSO",
     packages=setuptools.find_packages(include=['JaxSSO']),
+    keywords=["jax", "automatic-differentiation", "shape optimization", "form-finding", "structural optimization"],
     classifiers=[
         "License :: OSI Approved :: MIT License",
         "Programming Language :: Python :: 3",
@@ -25,7 +26,7 @@ setuptools.setup(
     install_requires=[
         'numpy',
         'matplotlib',
-        'jax[cpu]'
+        'jax'
     ],
     extras_require = {
         'FEA Solver': ['PyNiteFEA']
