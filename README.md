@@ -30,7 +30,7 @@ To get $\nabla C$:
 ## Usage
 
 ### Installation
-Install it with pip: `pip install jax-sso`
+Install it with pip: `pip install JaxSSO`
 
 ### Dependencies
 JaxSSO is written in Python and requires:
