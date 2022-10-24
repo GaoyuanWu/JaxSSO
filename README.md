@@ -3,6 +3,12 @@ A framework for structural shape optimization based on automatic differentiation
 
 Developed by [Gaoyuan Wu](https://gaoyuanwu.github.io/), advised by [Maria Garlock](https://garlock.princeton.edu/) @ Princeton.
 
+Please share our project with others and cite us if you find it interesting and helpful.
+We have a [preprint]() under review where you can find details regarding this framework.
+Cite us using:
+```bibtex
+Availabe soon
+```
 ## Features
 * Automatic differentiation (AD): an easy and accurate way for gradient evaluation. The implementation of AD avoids deriving derivatives manually or trauncation errors from numerical differentiation.
 * Acclerated linear algebra (XLA) and just-in-time compilation: these features in JAX boost the gradient evaluation
@@ -44,11 +50,3 @@ The project provides you with interactive examples with Google Colab for quick s
 * [Four-point supported gridshell](https://github.com/GaoyuanWu/JaxSSO/blob/main/Examples/): form-finding of a gridshell with four coner nodes pinned. The geometry is parameterized by Bezier Surface.
 * [Two-edge supported canopy, unconstrained](https://github.com/GaoyuanWu/JaxSSO/blob/main/Examples/TwoEdge_FreeForm_Unconstrained.ipynb): form-finding of a canopy. The geometry is parameterized by Bezier Surface.
 * [Two-edge supported canopy, constrained](https://github.com/GaoyuanWu/JaxSSO/blob/main/Examples/TwoEdge_FreeForm_Constrained.ipynb): form-finding of a canopy with height constraints. The geometry is parameterized by Bezier Surface.
-
-## Cite our preprint
-Please share our project with others and cite us if you find it interesting and helpful.
-We have a [preprint]() under review where you can find details regarding this framework.
-Cite us using:
-```bibtex
-Availabe soon
-```
