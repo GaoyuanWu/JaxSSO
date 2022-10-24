@@ -45,10 +45,10 @@ The project provides you with interactive examples with Google Colab for quick s
 * [Two-edge supported canopy, unconstrained](): form-finding of a canopy. The geometry is parameterized by Bezier Surface.
 * [Two-edge supported canopy, constrained](): form-finding of a canopy with height constraints. The geometry is parameterized by Bezier Surface.
 
-## Cite our preprint:
+## Cite our preprint
 Please share our project with others and cite us if you find it interesting and helpful.
 We have a [preprint]() under review where you can find details regarding this framework.
 Cite us using:
 ```bibtex
-Cite the preprint.
+Availabe soon
 ```
