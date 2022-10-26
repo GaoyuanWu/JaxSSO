@@ -1,7 +1,7 @@
 # JaxSSO
 A framework for structural shape optimization based on automatic differentiation (AD) and the adjoint method, enabled by [JAX](https://github.com/google/jax).
 
-Developed by [Gaoyuan Wu](https://gaoyuanwu.github.io/), advised by [Maria Garlock](https://garlock.princeton.edu/) @ Princeton.
+Developed by [Gaoyuan Wu](https://gaoyuanwu.github.io/) @ Princeton.
 
 Please share our project with others and cite us if you find it interesting and helpful.
 We have a [preprint]() under review where you can find details regarding this framework.
