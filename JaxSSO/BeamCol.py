@@ -11,6 +11,7 @@ from jax.numpy.linalg import solve,norm
 import jax.numpy as jnp
 from jax import jacfwd
 from jax.tree_util import register_pytree_node_class
+import numpy as np
 
 
 
@@ -104,6 +105,7 @@ class BeamCol():
                                  [(Cx*Cy*sin_alpha-Cz*cos_alpha)/Cxz, -Cxz*sin_alpha, (Cy*Cz*sin_alpha+Cx*cos_alpha)/Cxz ]]))
 
         # Build the transformation matrix
+        # !!!!Should be optimized in the future, less operations with .at.set
         transMatrix = zeros((12, 12))
         transMatrix = transMatrix.at[0:3,0:3].set(dirCos)
         transMatrix = transMatrix.at[3:6, 3:6].set(dirCos)
