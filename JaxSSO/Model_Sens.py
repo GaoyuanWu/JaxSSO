@@ -11,9 +11,9 @@ from jax import jit,vmap
 import numpy as np
 
 #JaxSSO
-from JaxSSO.Node import Node #'Node' objects
-from JaxSSO.BeamCol import BeamCol #'BeamCol' objects
-import JaxSSO.BeamCol as BeamColSens # Import BeamCol.py module 
+from .Node import Node #'Node' objects
+from .BeamCol import BeamCol #'BeamCol' objects
+from . import BeamCol as BeamColSens # Import BeamCol.py module 
 
 
 class Model_Sens():
