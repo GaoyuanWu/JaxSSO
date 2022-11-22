@@ -47,6 +47,6 @@ The project provides you with interactive examples with Google Colab for quick s
 * [2D-arch](https://github.com/GaoyuanWu/JaxSSO/blob/main/Examples/Arch_2D.ipynb): form-finding of a 2d-arch
 * [3D-arch](https://github.com/GaoyuanWu/JaxSSO/blob/main/Examples/Arch_3D.ipynb): form-finding of a 3d-arch
 * [Mannheim Multihalle](https://github.com/GaoyuanWu/JaxSSO/blob/main/Examples/Mannheim_Multihalle.ipynb): form-finding of Mannheim Multihalle
-* [Four-point supported gridshell](https://github.com/GaoyuanWu/JaxSSO/blob/main/Examples/): form-finding of a gridshell with four coner nodes pinned. The geometry is parameterized by Bezier Surface.
+* [Four-point supported gridshell](https://github.com/GaoyuanWu/JaxSSO/blob/main/Examples/FourPt_FreeForm.ipynb): form-finding of a gridshell with four coner nodes pinned. The geometry is parameterized by Bezier Surface.
 * [Two-edge supported canopy, unconstrained](https://github.com/GaoyuanWu/JaxSSO/blob/main/Examples/TwoEdge_FreeForm_Unconstrained.ipynb): form-finding of a canopy. The geometry is parameterized by Bezier Surface.
 * [Two-edge supported canopy, constrained](https://github.com/GaoyuanWu/JaxSSO/blob/main/Examples/TwoEdge_FreeForm_Constrained.ipynb): form-finding of a canopy with height constraints. The geometry is parameterized by Bezier Surface.
