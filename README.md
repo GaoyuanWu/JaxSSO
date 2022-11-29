@@ -3,8 +3,9 @@ A framework for structural shape optimization based on automatic differentiation
 
 Developed by [Gaoyuan Wu](https://gaoyuanwu.github.io/) @ Princeton.
 
-Please share our project with others and cite us if you find it interesting and helpful.
+
 We have a [preprint](https://doi.org/10.48550/arXiv.2211.15409) under review where you can find details regarding this framework.
+Please share our project with others and cite us if you find it interesting and helpful.
 Cite us using:
 ```bibtex
 @misc{https://doi.org/10.48550/arxiv.2211.15409,
@@ -21,7 +22,11 @@ Cite us using:
 * Automatic differentiation (AD): an easy and accurate way for gradient evaluation. The implementation of AD avoids deriving derivatives manually or trauncation errors from numerical differentiation.
 * Acclerated linear algebra (XLA) and just-in-time compilation: these features in JAX boost the gradient evaluation
 * Hardware acceleration: run on GPUs and TPUs for **faster** experience.
+* Form finding based on finite element analysis (FEA) and optimization theory
 
+Here is an implementation of JaxSSO to form-find a structure inspired by [Mannheim Multihalle](https://mannheim-multihalle.de/en/architecture/) using simple gradient descent. (First photo credit to Daniel Lukac)
+![alt text](https://github.com/GaoyuanWu/JaxSSO/blob/main/data/images/MannheimMultihalle.jpg)
+![alt text](https://github.com/GaoyuanWu/JaxSSO/blob/main/data/images/MM_opt.jpg)
 ## Background: shape optimization
 We consider the minimization of the ***strain energy*** by changing the **shape** of structures, which is equivalent to maximizing the stiffness and reducing the
 bending in the structure. The mathematical formulation of this problem is as follows, where no additional constraints are considered.
