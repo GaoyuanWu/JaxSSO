@@ -4,10 +4,18 @@ A framework for structural shape optimization based on automatic differentiation
 Developed by [Gaoyuan Wu](https://gaoyuanwu.github.io/) @ Princeton.
 
 Please share our project with others and cite us if you find it interesting and helpful.
-We have a [preprint]() under review where you can find details regarding this framework.
+We have a [preprint](https://doi.org/10.48550/arXiv.2211.15409) under review where you can find details regarding this framework.
 Cite us using:
 ```bibtex
-Available soon
+@misc{https://doi.org/10.48550/arxiv.2211.15409,
+  doi = {10.48550/ARXIV.2211.15409},
+  url = {https://arxiv.org/abs/2211.15409},
+  author = {Wu, Gaoyuan},
+  title = {A framework for structural shape optimization based on automatic differentiation, the adjoint method and accelerated linear algebra},
+  publisher = {arXiv},
+  year = {2022},
+}
+
 ```
 ## Features
 * Automatic differentiation (AD): an easy and accurate way for gradient evaluation. The implementation of AD avoids deriving derivatives manually or trauncation errors from numerical differentiation.
