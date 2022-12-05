@@ -24,7 +24,7 @@ setuptools.setup(
         "Programming Language :: Python :: 3.11",
     ],
     install_requires=[
-        'numpy',
+        'numpy>=1.22.0',
         'matplotlib',
         'jax'
     ],
