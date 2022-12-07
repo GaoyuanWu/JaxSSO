@@ -120,76 +120,6 @@ class Model_Sens():
         self.beamcols = {eleTag: beamcol for eleTag, beamcol in self.beamcols.items() if beamcol.i_nodeTag != nodeTag and beamcol.j_nodeTag != nodeTag}
         
 
-    def dcdx_beamcol_expanded(i,j,dkdx,u):
-        '''
-        Return an ndarray of shape (n_beamcol,3*n_node), representing the sensitivity of the 
-        strain energy contributed by each beam-column.
-        Each row represents the dcdx contribution from each beamcolumn.
-        This function is now written for one beam-column but will be 'vmapped' later to be applied to
-        all the beam columns in the system.
-        The following inputs and returns are for the 'vmapped' function.
-
-        Inputs
-        -----
-        i: ndarray of shape (n_beamcol)
-            i-node of each beamcolumn,
-
-        j: ndarray of shape (n_beamcol)
-            j-node of each beamcolumn
-
-        dkdx: ndarray of shape (6,n_beamcol,12,12)
-            sensitivity of local stiffness wrt to nodal coordinates of each beam-column
-
-        u: ndarray of shape (6*n_node)
-            displacement vector in global coordinate system
-
-        Returns
-        -----
-        dcdx_g: ndarray of shape (n_beamcol,3*n_node)
-            sensitivity of the strain energy contributed by each beam-column.
-
-        '''
-
-        index_i_node = jnp.linspace(i*6,i*6+6,6,dtype=int) #index of i-node
-        index_j_node = jnp.linspace(j*6,j*6+6,6,dtype=int) #index of j-node
-        index_beamcol = jnp.hstack((index_i_node,index_j_node)) #stack 'em
-        u_e = jnp.asarray(u)[index_beamcol] #displacement vector of this beamcolumn
-        dcdx_e = u_e.T@dkdx@u_e #adjoint method for sensitivity
-        dcdx_g = jnp.zeros(3*n_node) #extened container
-        index_i_crd = jnp.linspace(i*3,i*3+3,3,dtype=int) #index for coordinate
-        index_j_crd = jnp.linspace(j*3,j*3+3,3,dtype=int) #index for coordiante
-        index_crd = jnp.hstack((index_i_crd,index_j_crd)) #stack 'em
-        dcdx_g = dcdx_g.at[index_crd].set(dcdx_e) #update the array
-        return dcdx_g
-
-    @jit
-    def dcdx_beamcol(i_s,j_s,dkdx,u):
-        '''
-        Sensitivity of the strain energy wrt nodal coordinates contributed by beam-column elements.
-
-        Inputs
-        -----
-        i_s: ndarray of shape (n_beamcol)
-            i-node of each beamcolumn,
-
-        j_s: ndarray of shape (n_beamcol)
-            j-node of each beamcolumn
-
-        dkdx: ndarray of shape (6,n_beamcol,12,12)
-            sensitivity of local stiffness wrt to nodal coordinates of each beam-column
-
-        u: ndarray of shape (6*n_node)
-            displacement vector in global coordinate system
-
-        Returns
-        -----
-        ndarray of shape (3*n_node)
-            sensitivity of the strain energy wrt nodal coordinates contributed by beam-column.
-        '''
-        dcdx_ex = vmap(dcdx_beamcol_expanded,(0,0,1,None),0)(i_s,j_s,dkdx,u)
-        return jnp.sum(dcdx_ex,axis=0) 
-
-
     def Sens_C_Coord(self,u):
         '''
         Return the sensitivity of the strain energy (compliance) of the system wrt the displacement vector 'u'.
@@ -392,3 +322,75 @@ class Model_Sens():
         
 
         return jac_K_Coord
+
+
+#External functions
+
+def dcdx_beamcol_expanded(i,j,dkdx,u):
+    '''
+    Return an ndarray of shape (n_beamcol,3*n_node), representing the sensitivity of the 
+    strain energy contributed by each beam-column.
+    Each row represents the dcdx contribution from each beamcolumn.
+    This function is now written for one beam-column but will be 'vmapped' later to be applied to
+    all the beam columns in the system.
+    The following inputs and returns are for the 'vmapped' function.
+
+    Inputs
+    -----
+    i: ndarray of shape (n_beamcol)
+        i-node of each beamcolumn,
+
+    j: ndarray of shape (n_beamcol)
+        j-node of each beamcolumn
+
+    dkdx: ndarray of shape (6,n_beamcol,12,12)
+        sensitivity of local stiffness wrt to nodal coordinates of each beam-column
+
+    u: ndarray of shape (6*n_node)
+        displacement vector in global coordinate system
+
+    Returns
+    -----
+    dcdx_g: ndarray of shape (n_beamcol,3*n_node)
+        sensitivity of the strain energy contributed by each beam-column.
+
+    '''
+
+    index_i_node = jnp.linspace(i*6,i*6+6,6,dtype=int) #index of i-node
+    index_j_node = jnp.linspace(j*6,j*6+6,6,dtype=int) #index of j-node
+    index_beamcol = jnp.hstack((index_i_node,index_j_node)) #stack 'em
+    u_e = jnp.asarray(u)[index_beamcol] #displacement vector of this beamcolumn
+    dcdx_e = u_e.T@dkdx@u_e #adjoint method for sensitivity
+    dcdx_g = jnp.zeros(3*n_node) #extened container
+    index_i_crd = jnp.linspace(i*3,i*3+3,3,dtype=int) #index for coordinate
+    index_j_crd = jnp.linspace(j*3,j*3+3,3,dtype=int) #index for coordiante
+    index_crd = jnp.hstack((index_i_crd,index_j_crd)) #stack 'em
+    dcdx_g = dcdx_g.at[index_crd].set(dcdx_e) #update the array
+    return dcdx_g
+
+@jit
+def dcdx_beamcol(i_s,j_s,dkdx,u):
+    '''
+    Sensitivity of the strain energy wrt nodal coordinates contributed by beam-column elements.
+
+    Inputs
+    -----
+    i_s: ndarray of shape (n_beamcol)
+        i-node of each beamcolumn,
+
+    j_s: ndarray of shape (n_beamcol)
+        j-node of each beamcolumn
+
+    dkdx: ndarray of shape (6,n_beamcol,12,12)
+        sensitivity of local stiffness wrt to nodal coordinates of each beam-column
+
+    u: ndarray of shape (6*n_node)
+        displacement vector in global coordinate system
+
+    Returns
+    -----
+    ndarray of shape (3*n_node)
+        sensitivity of the strain energy wrt nodal coordinates contributed by beam-column.
+    '''
+    dcdx_ex = vmap(dcdx_beamcol_expanded,(0,0,1,None),0)(i_s,j_s,dkdx,u)
+    return jnp.sum(dcdx_ex,axis=0) 
