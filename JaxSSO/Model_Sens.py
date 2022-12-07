@@ -8,6 +8,7 @@ References
 
 #Jax and standard numpy
 from jax import jit,vmap
+import jax.numpy as jnp
 import numpy as np
 
 #JaxSSO
