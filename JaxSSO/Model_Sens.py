@@ -165,7 +165,7 @@ class Model_Sens():
             # Implement jax.vmap and jax.jit to boost the calculation
             # Note that the first call of jax.jit usually takes long because it is "compiling" the codes for future fast runs
             # the following calls will be extremely fast
-            beamcol_SensKCoord = vmap(BeamColSens.Ele_Sens_K_Coord)(beamcols_replica)  #Get the sensitivity, shape of (6,n_beamcol,12,12)
+            beamcol_SensKCoord = jnp.array(vmap(BeamColSens.Ele_Sens_K_Coord)(beamcols_replica))  #Get the sensitivity, shape of (6,n_beamcol,12,12)
             
             #From dkdx to dcdx
             dcdx_bc = dcdx_beamcol(beamcol_i_nodeTag,beamcol_j_nodeTag,beamcol_SensKCoord,u)
