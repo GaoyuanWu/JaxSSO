@@ -251,4 +251,3 @@ def Ele_Sens_K_Coord(BeamCol):
     #Calculate the sensitivity
     #argnums indicates the variables to which the Jacobian is calculated
     return jacfwd(BeamCol_K,argnums=(3,4,5,6,7,8))(eleTag, i_nodeTag, j_nodeTag, x1, y1, z1, x2, y2, z2, E, G, Iy, Iz, J, A)
-

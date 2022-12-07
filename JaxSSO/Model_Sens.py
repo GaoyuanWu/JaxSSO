@@ -5,7 +5,6 @@ References
 2. Bathe, K. J. (2006). Finite element procedures. Klaus-Jurgen Bathe.
 """
 
-
 #Jax and standard numpy
 from jax import jit,vmap
 import jax.numpy as jnp
@@ -133,9 +132,9 @@ class Model_Sens():
         dcdx: ndarray of shape(3*n_node)
             Gradient of the strain energy wrt nodal coordinates
         '''
-
         dcdx_all = jnp.zeros(3*len(self.nodes)) #container storing the sensitivity
         if self.beamcols:
+            
             #Creating containers storing attributes
             beamcol_list = list(self.beamcols.values())  #create a list for the beamcols
 
@@ -164,11 +163,12 @@ class Model_Sens():
             # Implement jax.vmap and jax.jit to boost the calculation
             # Note that the first call of jax.jit usually takes long because it is "compiling" the codes for future fast runs
             # the following calls will be extremely fast
+            
             beamcol_SensKCoord = jnp.array(vmap(BeamColSens.Ele_Sens_K_Coord)(beamcols_replica))  #Get the sensitivity, shape of (6,n_beamcol,12,12)
             
             #From dkdx to dcdx
             dcdx_bc = dcdx_beamcol(beamcol_i_nodeTag,beamcol_j_nodeTag,beamcol_SensKCoord,u)
-
+            
             #Add to the global array
             dcdx_all += dcdx_bc
 
@@ -254,7 +254,6 @@ class Model_Sens():
         beamcol_SensKCoord = vmap(BeamColSens.Ele_Sens_K_Coord)(beamcols_replica)  #Get the sensitivity, shape of (6,n_beamcol,12,12)
         beamcol_SensKCoord = np.array(beamcol_SensKCoord) #Convert to np.array, jnp.array is traceable so it is rather slow in for-loops
 
-
         # Assemble the element's sensitivity to global jac_K_Coord,
         # step through each beam-column
         i_beamcol = 0 
@@ -319,7 +318,6 @@ class Model_Sens():
                 #z
                 jac_K_Coord[i,2] = coo_matrix((value_z[i],(row[i],col[i])),shape=(len(self.nodes)*6, len(self.nodes)*6)) 
         
-
         return jac_K_Coord
 
 
@@ -355,15 +353,15 @@ def dcdx_beamcol_expanded(i,j,dkdx,u):
 
     '''
 
-    index_i_node = jnp.linspace(i*6,i*6+6,6,dtype=int) #index of i-node
-    index_j_node = jnp.linspace(j*6,j*6+6,6,dtype=int) #index of j-node
+    index_i_node = jnp.linspace(i*6,i*6+5,6,dtype=int) #index of i-node
+    index_j_node = jnp.linspace(j*6,j*6+5,6,dtype=int) #index of j-node
     index_beamcol = jnp.hstack((index_i_node,index_j_node)) #stack 'em
-    u_e = jnp.asarray(u)[index_beamcol] #displacement vector of this beamcolumn
+    u_e = jnp.asarray(u,dtype=float)[index_beamcol] #displacement vector of this beamcolumn
     dcdx_e = -0.5*u_e.T@dkdx@u_e #adjoint method for sensitivity
     n_node = u.shape[0]/6
     dcdx_g = jnp.zeros(int(3*n_node)) #extened container
-    index_i_crd = jnp.linspace(i*3,i*3+3,3,dtype=int) #index for coordinate
-    index_j_crd = jnp.linspace(j*3,j*3+3,3,dtype=int) #index for coordiante
+    index_i_crd = jnp.linspace(i*3,i*3+2,3,dtype=int) #index for coordinate
+    index_j_crd = jnp.linspace(j*3,j*3+2,3,dtype=int) #index for coordiante
     index_crd = jnp.hstack((index_i_crd,index_j_crd)) #stack 'em
     dcdx_g = dcdx_g.at[index_crd].set(dcdx_e) #update the array
     return dcdx_g
