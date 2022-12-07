@@ -359,7 +359,7 @@ def dcdx_beamcol_expanded(i,j,dkdx,u):
     index_j_node = jnp.linspace(j*6,j*6+6,6,dtype=int) #index of j-node
     index_beamcol = jnp.hstack((index_i_node,index_j_node)) #stack 'em
     u_e = jnp.asarray(u)[index_beamcol] #displacement vector of this beamcolumn
-    dcdx_e = u_e.T@dkdx@u_e #adjoint method for sensitivity
+    dcdx_e = -0.5*u_e.T@dkdx@u_e #adjoint method for sensitivity
     n_node = u.shape[0]/6
     dcdx_g = jnp.zeros(int(3*n_node)) #extened container
     index_i_crd = jnp.linspace(i*3,i*3+3,3,dtype=int) #index for coordinate
