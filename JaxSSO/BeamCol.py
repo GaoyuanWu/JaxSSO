@@ -219,6 +219,7 @@ def BeamCol_K(eleTag, i_nodeTag, j_nodeTag, x1, y1, z1, x2, y2, z2,E,G,Iy,Iz,J,A
     #Get the global stiffness matrix of this element
     return this_beamcol.K()
 
+@jit
 def Ele_Sens_K_Coord(BeamCol):
     '''
     Return the sensitivity of element's 
