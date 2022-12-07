@@ -10,7 +10,6 @@ References
 from jax import jit,vmap
 import jax.numpy as jnp
 import numpy as np
-
 #JaxSSO
 from .Node import Node #'Node' objects
 from .BeamCol import BeamCol #'BeamCol' objects
@@ -361,7 +360,8 @@ def dcdx_beamcol_expanded(i,j,dkdx,u):
     index_beamcol = jnp.hstack((index_i_node,index_j_node)) #stack 'em
     u_e = jnp.asarray(u)[index_beamcol] #displacement vector of this beamcolumn
     dcdx_e = u_e.T@dkdx@u_e #adjoint method for sensitivity
-    dcdx_g = jnp.zeros(3*n_node) #extened container
+    n_node = u.shape[0]/6
+    dcdx_g = jnp.zeros(int(3*n_node)) #extened container
     index_i_crd = jnp.linspace(i*3,i*3+3,3,dtype=int) #index for coordinate
     index_j_crd = jnp.linspace(j*3,j*3+3,3,dtype=int) #index for coordiante
     index_crd = jnp.hstack((index_i_crd,index_j_crd)) #stack 'em
@@ -392,9 +392,5 @@ def dcdx_beamcol(i_s,j_s,dkdx,u):
     ndarray of shape (3*n_node)
         sensitivity of the strain energy wrt nodal coordinates contributed by beam-column.
     '''
-    print(i_s.shape)
-    print(j_s.shape)
-    print(dkdx.shape)
-    print(u.shape)
     dcdx_ex = vmap(dcdx_beamcol_expanded,(0,0,1,None),0)(i_s,j_s,dkdx,u)
     return jnp.sum(dcdx_ex,axis=0) 
