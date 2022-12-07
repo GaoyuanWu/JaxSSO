@@ -9,7 +9,7 @@ References
 from jax.numpy import array, zeros, matmul, sqrt
 from jax.numpy.linalg import solve,norm
 import jax.numpy as jnp
-from jax import jacfwd
+from jax import jacfwd,jit
 from jax.tree_util import register_pytree_node_class
 import numpy as np
 
