@@ -392,5 +392,9 @@ def dcdx_beamcol(i_s,j_s,dkdx,u):
     ndarray of shape (3*n_node)
         sensitivity of the strain energy wrt nodal coordinates contributed by beam-column.
     '''
+    print(i_s.shape)
+    print(j_s.shape)
+    print(dkdx.shape)
+    print(u.shape)
     dcdx_ex = vmap(dcdx_beamcol_expanded,(0,0,1,None),0)(i_s,j_s,dkdx,u)
     return jnp.sum(dcdx_ex,axis=0) 
