@@ -5,11 +5,10 @@ References
 2. Bathe, K. J. (2006). Finite element procedures. Klaus-Jurgen Bathe.
 """
 
-
 #Jax and standard numpy
 from jax import jit,vmap
+import jax.numpy as jnp
 import numpy as np
-
 #JaxSSO
 from .Node import Node #'Node' objects
 from .BeamCol import BeamCol #'BeamCol' objects
@@ -119,6 +118,63 @@ class Model_Sens():
         self.beamcols = {eleTag: beamcol for eleTag, beamcol in self.beamcols.items() if beamcol.i_nodeTag != nodeTag and beamcol.j_nodeTag != nodeTag}
         
 
+    def Sens_C_Coord(self,u):
+        '''
+        Return the sensitivity of the strain energy (compliance) of the system wrt the displacement vector 'u'.
+
+        Inputs
+        -----
+        u: ndarray of shape (6*n_node)
+            Displacement of each DOF
+
+        Returns
+        -----
+        dcdx: ndarray of shape(3*n_node)
+            Gradient of the strain energy wrt nodal coordinates
+        '''
+        dcdx_all = jnp.zeros(3*len(self.nodes)) #container storing the sensitivity
+        if self.beamcols:
+            
+            #Creating containers storing attributes
+            beamcol_list = list(self.beamcols.values())  #create a list for the beamcols
+
+            beamcol_eleTag = np.array([beamcol.eleTag for beamcol in beamcol_list])  #Tags of beamcols
+            beamcol_i_nodeTag = np.array([beamcol.i_nodeTag for beamcol in beamcol_list])  #Tags of i-node of beamcols
+            beamcol_j_nodeTag = np.array([beamcol.j_nodeTag for beamcol in beamcol_list])  #Tags of j-node of beamcols
+            beamcol_x1 = np.array([beamcol.x1 for beamcol in beamcol_list],dtype=float) #x of inode of beamcols
+            beamcol_y1 = np.array([beamcol.y1 for beamcol in beamcol_list],dtype=float) #y of inode of beamcols
+            beamcol_z1 = np.array([beamcol.z1 for beamcol in beamcol_list],dtype=float) #z of inode of beamcols
+            beamcol_x2 = np.array([beamcol.x2 for beamcol in beamcol_list],dtype=float) #x of jnode of beamcols
+            beamcol_y2 = np.array([beamcol.y2 for beamcol in beamcol_list],dtype=float) #y of jnode of beamcols
+            beamcol_z2 = np.array([beamcol.z2 for beamcol in beamcol_list],dtype=float) #z of jnode of beamcols
+            beamcol_E = np.array([beamcol.E for beamcol in beamcol_list],dtype=float) #E of beamcols
+            beamcol_G = np.array([beamcol.G for beamcol in beamcol_list],dtype=float) #G of beamcols
+            beamcol_Iy = np.array([beamcol.Iy for beamcol in beamcol_list],dtype=float) #Iy of beamcols
+            beamcol_Iz = np.array([beamcol.Iz for beamcol in beamcol_list],dtype=float) #Iy of beamcols
+            beamcol_J = np.array([beamcol.J for beamcol in beamcol_list],dtype=float) #J of beamcols
+            beamcol_A = np.array([beamcol.A for beamcol in beamcol_list],dtype=float) #A of beamcols
+
+            #Create 'BeamCol' object from arrays of attributes
+            beamcols_replica = BeamCol(beamcol_eleTag, beamcol_i_nodeTag, beamcol_j_nodeTag, 
+                                                beamcol_x1,beamcol_y1,beamcol_z1,beamcol_x2,beamcol_y2,
+                                                beamcol_z2,beamcol_E,beamcol_G,beamcol_Iy,beamcol_Iz,beamcol_J,beamcol_A)
+
+            # Call the functions defined for 'BeamCol' objects
+            # Implement jax.vmap and jax.jit to boost the calculation
+            # Note that the first call of jax.jit usually takes long because it is "compiling" the codes for future fast runs
+            # the following calls will be extremely fast
+            
+            beamcol_SensKCoord = jnp.array(vmap(BeamColSens.Ele_Sens_K_Coord)(beamcols_replica))  #Get the sensitivity, shape of (6,n_beamcol,12,12)
+            
+            #From dkdx to dcdx
+            dcdx_bc = dcdx_beamcol(beamcol_i_nodeTag,beamcol_j_nodeTag,beamcol_SensKCoord,u)
+            
+            #Add to the global array
+            dcdx_all += dcdx_bc
+
+        return dcdx_all
+
+    
     def Sens_K_Coord(self, sparse=True):
         '''
         1. Assemble the global stiffness matrix 'K'. (Without the b.c.)
@@ -195,9 +251,8 @@ class Model_Sens():
         # Implement jax.vmap and jax.jit to boost the calculation
         # Note that the first call of jax.jit usually takes long because it is "compiling" the codes for future fast runs
         # the following calls will be extremely fast
-        beamcol_SensKCoord = vmap(jit(BeamColSens.Ele_Sens_K_Coord))(beamcols_replica)  #Get the sensitivity, shape of (6,n_beamcol,12,12)
+        beamcol_SensKCoord = vmap(BeamColSens.Ele_Sens_K_Coord)(beamcols_replica)  #Get the sensitivity, shape of (6,n_beamcol,12,12)
         beamcol_SensKCoord = np.array(beamcol_SensKCoord) #Convert to np.array, jnp.array is traceable so it is rather slow in for-loops
-
 
         # Assemble the element's sensitivity to global jac_K_Coord,
         # step through each beam-column
@@ -263,5 +318,77 @@ class Model_Sens():
                 #z
                 jac_K_Coord[i,2] = coo_matrix((value_z[i],(row[i],col[i])),shape=(len(self.nodes)*6, len(self.nodes)*6)) 
         
-
         return jac_K_Coord
+
+
+#External functions
+
+def dcdx_beamcol_expanded(i,j,dkdx,u):
+    '''
+    Return an ndarray of shape (n_beamcol,3*n_node), representing the sensitivity of the 
+    strain energy contributed by each beam-column.
+    Each row represents the dcdx contribution from each beamcolumn.
+    This function is now written for one beam-column but will be 'vmapped' later to be applied to
+    all the beam columns in the system.
+    The following inputs and returns are for the 'vmapped' function.
+
+    Inputs
+    -----
+    i: ndarray of shape (n_beamcol)
+        i-node of each beamcolumn,
+
+    j: ndarray of shape (n_beamcol)
+        j-node of each beamcolumn
+
+    dkdx: ndarray of shape (6,n_beamcol,12,12)
+        sensitivity of local stiffness wrt to nodal coordinates of each beam-column
+
+    u: ndarray of shape (6*n_node)
+        displacement vector in global coordinate system
+
+    Returns
+    -----
+    dcdx_g: ndarray of shape (n_beamcol,3*n_node)
+        sensitivity of the strain energy contributed by each beam-column.
+
+    '''
+
+    index_i_node = jnp.linspace(i*6,i*6+5,6,dtype=int) #index of i-node
+    index_j_node = jnp.linspace(j*6,j*6+5,6,dtype=int) #index of j-node
+    index_beamcol = jnp.hstack((index_i_node,index_j_node)) #stack 'em
+    u_e = jnp.asarray(u,dtype=float)[index_beamcol] #displacement vector of this beamcolumn
+    dcdx_e = -0.5*u_e.T@dkdx@u_e #adjoint method for sensitivity
+    n_node = u.shape[0]/6
+    dcdx_g = jnp.zeros(int(3*n_node)) #extened container
+    index_i_crd = jnp.linspace(i*3,i*3+2,3,dtype=int) #index for coordinate
+    index_j_crd = jnp.linspace(j*3,j*3+2,3,dtype=int) #index for coordiante
+    index_crd = jnp.hstack((index_i_crd,index_j_crd)) #stack 'em
+    dcdx_g = dcdx_g.at[index_crd].set(dcdx_e) #update the array
+    return dcdx_g
+
+@jit
+def dcdx_beamcol(i_s,j_s,dkdx,u):
+    '''
+    Sensitivity of the strain energy wrt nodal coordinates contributed by beam-column elements.
+
+    Inputs
+    -----
+    i_s: ndarray of shape (n_beamcol)
+        i-node of each beamcolumn,
+
+    j_s: ndarray of shape (n_beamcol)
+        j-node of each beamcolumn
+
+    dkdx: ndarray of shape (6,n_beamcol,12,12)
+        sensitivity of local stiffness wrt to nodal coordinates of each beam-column
+
+    u: ndarray of shape (6*n_node)
+        displacement vector in global coordinate system
+
+    Returns
+    -----
+    ndarray of shape (3*n_node)
+        sensitivity of the strain energy wrt nodal coordinates contributed by beam-column.
+    '''
+    dcdx_ex = vmap(dcdx_beamcol_expanded,(0,0,1,None),0)(i_s,j_s,dkdx,u)
+    return jnp.sum(dcdx_ex,axis=0) 
