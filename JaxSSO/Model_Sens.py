@@ -9,6 +9,11 @@ References
 from jax import jit,vmap
 import jax.numpy as jnp
 import numpy as np
+from jax.experimental import sparse #sparse module of Jax, under active development
+
+#Partial
+from functools import partial
+
 #JaxSSO
 from .Node import Node #'Node' objects
 from .BeamCol import BeamCol #'BeamCol' objects
@@ -39,6 +44,7 @@ class Model_Sens():
         
         self.nodes = {}      # A dictionary of the structure's nodes
         self.beamcols = {}    # A dictionary of the structure's beam-columns
+        self.supports_indices = [] # A list storing all the indices of the active supports 
 
 
 
@@ -101,22 +107,116 @@ class Model_Sens():
         self.beamcols[eleTag] = new_beamcol
 
 
-    def delete_node(self, nodeTag):
+    def add_support(self,node_index,active_supports=[1,1,1,1,1,1]):
         '''
-        Removes a node from the model and delete elements that are made up from this node.
-        
+        Adding nodal support in the model.
         Inputs
-        ----------
-        nodeTag : int
-            The nodeTag of the node to be removed.
+        -----
+        node_index: int
+            The index of the node.
+        
+        active_supports: list, 1darray
+            Whether the support for [X,Y,Z,RX,RY,RZ] is active.
+            1 is active, 0 is deactivated.
+            Default is fixed.
         '''
+        indices = np.linspace(node_index*6,node_index*6+5,6,dtype=int)
+        active_supports = np.array(active_supports,dtype=int) #convert to standard np.array
+        where_active = np.argwhere(active_supports==1).ravel() #which dofs are active
+        self.supports_indices.append(indices[where_active]) #append to the global list
+
+    def add_nodal_load(self,f):
+        '''
+        Add the global load vector {f}.
+        Inputs
+        ---
+        f: ndarray of shape (6*n_node)
+            The global nodal loading vector.
+        '''
+        self.f = f 
         
-        # Remove the node.
-        self.nodes.pop(nodeTag)
+    def K(self):
+        '''
+        Return the global stiffness of the system in 'jax.experimental.sparce.BCOO' format.
+        Without the boundary conditions assigned.
         
-        # Find any elements attached to the node and remove them
-        self.beamcols = {eleTag: beamcol for eleTag, beamcol in self.beamcols.items() if beamcol.i_nodeTag != nodeTag and beamcol.j_nodeTag != nodeTag}
+        '''
+        n_dof = 6*len(self.nodes) #number of dof
+        if self.beamcols:
+            #Creating containers storing attributes
+            beamcol_list = list(self.beamcols.values())  #create a list for the beamcols
+
+            beamcol_eleTag = np.array([beamcol.eleTag for beamcol in beamcol_list])  #Tags of beamcols
+            beamcol_i_nodeTag = np.array([beamcol.i_nodeTag for beamcol in beamcol_list])  #Tags of i-node of beamcols
+            beamcol_j_nodeTag = np.array([beamcol.j_nodeTag for beamcol in beamcol_list])  #Tags of j-node of beamcols
+            beamcol_x1 = np.array([beamcol.x1 for beamcol in beamcol_list],dtype=float) #x of inode of beamcols
+            beamcol_y1 = np.array([beamcol.y1 for beamcol in beamcol_list],dtype=float) #y of inode of beamcols
+            beamcol_z1 = np.array([beamcol.z1 for beamcol in beamcol_list],dtype=float) #z of inode of beamcols
+            beamcol_x2 = np.array([beamcol.x2 for beamcol in beamcol_list],dtype=float) #x of jnode of beamcols
+            beamcol_y2 = np.array([beamcol.y2 for beamcol in beamcol_list],dtype=float) #y of jnode of beamcols
+            beamcol_z2 = np.array([beamcol.z2 for beamcol in beamcol_list],dtype=float) #z of jnode of beamcols
+            beamcol_E = np.array([beamcol.E for beamcol in beamcol_list],dtype=float) #E of beamcols
+            beamcol_G = np.array([beamcol.G for beamcol in beamcol_list],dtype=float) #G of beamcols
+            beamcol_Iy = np.array([beamcol.Iy for beamcol in beamcol_list],dtype=float) #Iy of beamcols
+            beamcol_Iz = np.array([beamcol.Iz for beamcol in beamcol_list],dtype=float) #Iy of beamcols
+            beamcol_J = np.array([beamcol.J for beamcol in beamcol_list],dtype=float) #J of beamcols
+            beamcol_A = np.array([beamcol.A for beamcol in beamcol_list],dtype=float) #A of beamcols
+
+            #Create 'BeamCol' object from arrays of attributes
+            beamcols_replica = BeamCol(beamcol_eleTag, beamcol_i_nodeTag, beamcol_j_nodeTag, 
+                                                beamcol_x1,beamcol_y1,beamcol_z1,beamcol_x2,beamcol_y2,
+                                                beamcol_z2,beamcol_E,beamcol_G,beamcol_Iy,beamcol_Iz,beamcol_J,beamcol_A)
+
+            # Call the functions defined for 'BeamCol' objects
+            # Implement jax.vmap
+            data,indices = vmap(BeamColSens.Ele_K_to_Global)(beamcols_replica)  #Get the indices and values storing all the local stiffness matrices
+            data = data.reshape(-1) # re-dimension the data to 1darray (144*n_beamcol,)
+            indices = indices.reshape(-1,2) #re-dimension to 2darray of shape (144*n_beamcol,2)
+            K_global = sparse.BCOO((data,indices),shape=(n_dof,n_dof))
         
+        return K_global
+
+    def solve(self):
+        '''
+        Solving [K]{u} = {f}
+        '''
+        K_dense = self.K().todense() #Convert to dense matrix
+        known_indices,unknown_indices = self.bc_indices() #Get the bc indices
+
+        #Parition the global K into four blocks
+        #based on the boundary conditions
+        K11 = K_dense[unknown_indices,:][:,unknown_indices] #K11
+        #K12 = K_dense[unknown_indices,:][:,known_indices]
+        #K21 = K_dense[known_indices,:][:,unknown_indices]
+        #K22 = K_dense[known_indices,:][:,known_indices]
+
+        #Load vector @ unknown indices
+        f_uk = self.f[unknown_indices]
+
+        #Solving FEA
+        u_unknown = jnp.linalg.solve(K11,f_uk)
+
+        #Global displacement vector
+        u_all = jnp.zeros(6*len(self.nodes))
+        u_all = u_all.at[unknown_indices].set(u_unknown)
+
+        self.u = u_all #store the displacement vector
+
+    def bc_indices(self):
+        '''
+        Return the indices of unknown and known dof-displacement based on the boundary conditions.
+        Returns
+        ------
+        known_indices: ndarray 
+            indices of displacement that are known. 
+        
+        unknown_indices: ndarray
+            indices of unknown displacement
+        '''
+        known_indices = (np.array(self.supports_indices,dtype=int)).ravel() #convert the active support indices list to np.array
+        all_indices = np.linspace(0,6*len(self.nodes)-1,6*len(self.nodes),dtype=int) #create a container for all indices
+        unknown_indices = all_indices[np.where(np.isin(all_indices,known_indices,assume_unique=True,invert=True))] #slice out the known indices 
+        return known_indices,unknown_indices
 
     def Sens_C_Coord(self,u):
         '''
@@ -173,152 +273,6 @@ class Model_Sens():
             dcdx_all += dcdx_bc
 
         return dcdx_all
-
-    
-    def Sens_K_Coord(self, sparse=True):
-        '''
-        1. Assemble the global stiffness matrix 'K'. (Without the b.c.)
-        2. Calculate the sensitivity of 'K' w.r.t. the nodal coordinates.
-
-
-        Inputs
-        -----
-        sparse : bool
-            Indicates whether the sparse matrix is used. Default is True
-
-        Returns:
-        ``````
-        jac_K_coord: ndarray
-            If sparse == True: 
-                shape of [n_nodes, 3]
-                each entry is a scipy.sparse.coo_matrix represents an ndarray of shape [6*n_nodes, 6*n_nodes]
-            If sparse == False: 
-                shape of [n_nodes, 3, 6*n_nodes, 6*n_nodes]
-        '''
-
-        #Creating a container to store the sensitivity
-        if sparse == True:
-            from scipy.sparse import coo_matrix # Import `scipy` package if the sparse == True
-            
-            #Array storing the sensitivity of K w.r.t. nodal coordinates; 
-            #each entry is a coo_matrix sparse matrix with a size of (6*num_of_node,6*num_of_node)
-            jac_K_Coord = np.zeros((len(self.nodes),3),dtype=object) 
-
-            #Create lists for the coo_matrix
-            row = [[] for _ in range(len(self.nodes))] 
-            col = [[] for _ in range(len(self.nodes))]
-            value_x = [[] for _ in range(len(self.nodes))] 
-            value_y = [[] for _ in range(len(self.nodes))] 
-            value_z = [[] for _ in range(len(self.nodes))]
-
-            
-
-        else:
-            jac_K_Coord = np.zeros((len(self.nodes),3,len(self.nodes)*6,len(self.nodes)*6)) 
-
-        # To implement jax.jit and jax.vmap to boost the calculation of sensitivities
-        # and to avoid for-loops, the following codes create several ndarrays consisting of 
-        # the attributes of 'BeamCol' objects.
-        # We then create a 'BeamCol' object made from attributes arrays [struct of arrays]
-        # rather than creating an array storing our 'BeamCol' objects [array of structs]
-        # Referred to : https://github.com/google/jax/discussions/5322, answer by shoyer
-
-        #Creating containers storing attributes
-        beamcol_list = list(self.beamcols.values())  #create a list for the beamcols
-
-        beamcol_eleTag = np.array([beamcol.eleTag for beamcol in beamcol_list])  #Tags of beamcols
-        beamcol_i_nodeTag = np.array([beamcol.i_nodeTag for beamcol in beamcol_list])  #Tags of i-node of beamcols
-        beamcol_j_nodeTag = np.array([beamcol.j_nodeTag for beamcol in beamcol_list])  #Tags of j-node of beamcols
-        beamcol_x1 = np.array([beamcol.x1 for beamcol in beamcol_list],dtype=float) #x of inode of beamcols
-        beamcol_y1 = np.array([beamcol.y1 for beamcol in beamcol_list],dtype=float) #y of inode of beamcols
-        beamcol_z1 = np.array([beamcol.z1 for beamcol in beamcol_list],dtype=float) #z of inode of beamcols
-        beamcol_x2 = np.array([beamcol.x2 for beamcol in beamcol_list],dtype=float) #x of jnode of beamcols
-        beamcol_y2 = np.array([beamcol.y2 for beamcol in beamcol_list],dtype=float) #y of jnode of beamcols
-        beamcol_z2 = np.array([beamcol.z2 for beamcol in beamcol_list],dtype=float) #z of jnode of beamcols
-        beamcol_E = np.array([beamcol.E for beamcol in beamcol_list],dtype=float) #E of beamcols
-        beamcol_G = np.array([beamcol.G for beamcol in beamcol_list],dtype=float) #G of beamcols
-        beamcol_Iy = np.array([beamcol.Iy for beamcol in beamcol_list],dtype=float) #Iy of beamcols
-        beamcol_Iz = np.array([beamcol.Iz for beamcol in beamcol_list],dtype=float) #Iy of beamcols
-        beamcol_J = np.array([beamcol.J for beamcol in beamcol_list],dtype=float) #J of beamcols
-        beamcol_A = np.array([beamcol.A for beamcol in beamcol_list],dtype=float) #A of beamcols
-
-        #Create 'BeamCol' object from arrays of attributes
-        beamcols_replica = BeamCol(beamcol_eleTag, beamcol_i_nodeTag, beamcol_j_nodeTag, 
-                                            beamcol_x1,beamcol_y1,beamcol_z1,beamcol_x2,beamcol_y2,
-                                            beamcol_z2,beamcol_E,beamcol_G,beamcol_Iy,beamcol_Iz,beamcol_J,beamcol_A)
-        
-        # Call the functions defined for 'BeamCol' objects
-        # Implement jax.vmap and jax.jit to boost the calculation
-        # Note that the first call of jax.jit usually takes long because it is "compiling" the codes for future fast runs
-        # the following calls will be extremely fast
-        beamcol_SensKCoord = vmap(BeamColSens.Ele_Sens_K_Coord)(beamcols_replica)  #Get the sensitivity, shape of (6,n_beamcol,12,12)
-        beamcol_SensKCoord = np.array(beamcol_SensKCoord) #Convert to np.array, jnp.array is traceable so it is rather slow in for-loops
-
-        # Assemble the element's sensitivity to global jac_K_Coord,
-        # step through each beam-column
-        i_beamcol = 0 
-        for beamcol in self.beamcols.values():
-            
-            # Step through each term in the beam-column's stiffness matrix (12,12)
-            # 'a' & 'b' are rows and cols in its own stiffness matrix (12,12)
-            # 'm' & 'n' are rows and cols in the global stiffness matrix (n_node*6, n_node*6)
-            for a in range(12):
-            
-                # Determine if index 'a' is related to the i-node or j-node
-                if a < 6:
-                    # Find the corresponding index 'm' in the global stiffness matrix
-                    m = beamcol.i_nodeTag*6 + a
-                else:
-                    # Find the corresponding index 'm' in the global stiffness matrix
-                    m = beamcol.j_nodeTag*6 + (a-6)
-                
-                for b in range(12):
-                
-                    # Determine if index 'b' is related to the i-node or j-node
-                    if b < 6:
-                        # Find the corresponding index 'n' in the global stiffness matrix
-                        n = beamcol.i_nodeTag*6 + b
-                    else:
-                        # Find the corresponding index 'n' in the global stiffness matrix
-                        n = beamcol.j_nodeTag*6 + (b-6)
-                
-                    # Now that 'm' and 'n' are known, place the term in the global stiffness matrix
-                    if sparse == True:
-                        row[beamcol.i_nodeTag].append(m)
-                        row[beamcol.j_nodeTag].append(m)
-                        col[beamcol.i_nodeTag].append(n)
-                        col[beamcol.j_nodeTag].append(n)
-                        value_x[beamcol.i_nodeTag].append(beamcol_SensKCoord[0,i_beamcol,a, b])
-                        value_y[beamcol.i_nodeTag].append(beamcol_SensKCoord[1,i_beamcol,a, b])
-                        value_z[beamcol.i_nodeTag].append(beamcol_SensKCoord[2,i_beamcol,a, b])
-                        value_x[beamcol.j_nodeTag].append(beamcol_SensKCoord[3,i_beamcol,a, b])
-                        value_y[beamcol.j_nodeTag].append(beamcol_SensKCoord[4,i_beamcol,a, b])
-                        value_z[beamcol.j_nodeTag].append(beamcol_SensKCoord[5,i_beamcol,a, b])
-                    else:
-                        jac_K_Coord[beamcol.i_nodeTag,0,m,n] += beamcol_SensKCoord[0,i_beamcol,a, b]
-                        jac_K_Coord[beamcol.i_nodeTag,1,m,n] += beamcol_SensKCoord[1,i_beamcol,a, b]
-                        jac_K_Coord[beamcol.i_nodeTag,2,m,n] += beamcol_SensKCoord[2,i_beamcol,a, b]
-                        jac_K_Coord[beamcol.j_nodeTag,0,m,n] += beamcol_SensKCoord[3,i_beamcol,a, b]
-                        jac_K_Coord[beamcol.j_nodeTag,1,m,n] += beamcol_SensKCoord[4,i_beamcol,a, b]
-                        jac_K_Coord[beamcol.j_nodeTag,2,m,n] += beamcol_SensKCoord[5,i_beamcol,a, b]
-
-
-            i_beamcol += 1    
-       
-
-        if sparse == True:
-
-            #Step through every node
-            for i in range(len(self.nodes)):
-                #Each entry is a sparse matrix of corresponding sensitivity
-                #x
-                jac_K_Coord[i,0] = coo_matrix((value_x[i],(row[i],col[i])),shape=(len(self.nodes)*6, len(self.nodes)*6)) 
-                #y
-                jac_K_Coord[i,1] = coo_matrix((value_y[i],(row[i],col[i])),shape=(len(self.nodes)*6, len(self.nodes)*6)) 
-                #z
-                jac_K_Coord[i,2] = coo_matrix((value_z[i],(row[i],col[i])),shape=(len(self.nodes)*6, len(self.nodes)*6)) 
-        
-        return jac_K_Coord
 
 
 #External functions

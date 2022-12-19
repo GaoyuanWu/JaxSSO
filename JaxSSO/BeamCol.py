@@ -220,6 +220,30 @@ def BeamCol_K(eleTag, i_nodeTag, j_nodeTag, x1, y1, z1, x2, y2, z2,E,G,Iy,Iz,J,A
     return this_beamcol.K()
 
 @jit
+def Ele_K_to_Global(BeamCol):
+    '''
+    Return the [row, col, values] of element's local stiffness matrix in the global stiffness matrix.
+    This will later be used for constructing the global stiffness matrix, which will be stored in a sparse matrix.
+    Inputs:
+        BeamCol:BeamCol() object
+    
+    Return:
+        data: ndarray of shape(144,)
+            The values of local stiffness matrix
+        
+        indices: ndarray of shape (144,2)
+            The corresponding indices in global stiffness matrix.
+            The first column is the row number, the second coclumn is the column number
+    '''
+    data = jnp.ravel(BeamCol.K()) #local stiffness matrix, flatten
+    i =BeamCol.i_nodeTag #i-node
+    j =BeamCol.j_nodeTag #j-node
+    indices_dof = jnp.hstack((jnp.linspace(i*6,i*6+5,6,dtype=int),jnp.linspace(j*6,j*6+5,6,dtype=int))) #indices represented the dofs of this beamcol
+    rows,cols = jnp.meshgrid(indices_dof,indices_dof,indexing='ij')#rows and columns
+    indices = jnp.vstack((rows.ravel(),cols.ravel())).T #indices in global stiffness matrix
+    return data,indices
+    
+@jit
 def Ele_Sens_K_Coord(BeamCol):
     '''
     Return the sensitivity of element's 
