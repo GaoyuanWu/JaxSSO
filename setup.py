@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="JaxSSO",
-    version="0.0.3",
+    version="0.0.4",
     author="Gaoyuan Wu",
     author_email="gaoyuanw@princeton.edu",
     description="A framework for structural shape optimization based on automatic differentiation (AD) and the adjoint method, enabled by JAX",
