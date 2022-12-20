@@ -176,6 +176,22 @@ class Model_Sens():
         
         return K_global
 
+    def bc_indices(self):
+        '''
+        Return the indices of unknown and known dof-displacement based on the boundary conditions.
+        Returns
+        ------
+        known_indices: ndarray 
+            indices of displacement that are known. 
+        
+        unknown_indices: ndarray
+            indices of unknown displacement
+        '''
+        known_indices = (np.array(self.supports_indices,dtype=int)).ravel() #convert the active support indices list to np.array
+        all_indices = np.linspace(0,6*len(self.nodes)-1,6*len(self.nodes),dtype=int) #create a container for all indices
+        unknown_indices = all_indices[np.where(np.isin(all_indices,known_indices,assume_unique=True,invert=True))] #slice out the known indices 
+        return known_indices,unknown_indices
+        
     def solve(self):
         '''
         Solving [K]{u} = {f}
@@ -202,21 +218,7 @@ class Model_Sens():
 
         self.u = u_all #store the displacement vector
 
-    def bc_indices(self):
-        '''
-        Return the indices of unknown and known dof-displacement based on the boundary conditions.
-        Returns
-        ------
-        known_indices: ndarray 
-            indices of displacement that are known. 
-        
-        unknown_indices: ndarray
-            indices of unknown displacement
-        '''
-        known_indices = (np.array(self.supports_indices,dtype=int)).ravel() #convert the active support indices list to np.array
-        all_indices = np.linspace(0,6*len(self.nodes)-1,6*len(self.nodes),dtype=int) #create a container for all indices
-        unknown_indices = all_indices[np.where(np.isin(all_indices,known_indices,assume_unique=True,invert=True))] #slice out the known indices 
-        return known_indices,unknown_indices
+
 
     def Sens_C_Coord(self,u):
         '''
