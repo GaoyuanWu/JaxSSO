@@ -38,7 +38,7 @@ To implement **gradient-based optimization**, one needs to calculate $\nabla C$.
 $$\frac{\partial C}{\partial x_i}=-\frac{1}{2}\mathbf{u}^\mathrm{T}\frac{\partial \mathbf{K}}{\partial x_i}\mathbf{u}$$ The use of the adjoint method: i) reduces the computation complexity and ii) decouples FEA and the derivative calculation of the stiffness matrix $\mathbf K$.
 To get $\nabla C$:
 1. Conduct FEA to get $\mathbf u$
-2. Conduct sensitivity analysis to get $\frac{\partial \mathbf{K}}{\partial x_i}$. which is done by the module in JaxSSO called `Model_Sens.py` using AD.
+2. Conduct sensitivity analysis to get $\frac{\partial \mathbf{K}}{\partial x_i}$.
 
 ## Usage
 
@@ -52,8 +52,6 @@ JaxSSO is written in Python and requires:
 * [Nlopt](https://nlopt.readthedocs.io/en/latest/): Nlopt is a library for nonlinear optimization. It has Python interface, which is implemented herein. Refer to [this link](https://nlopt.readthedocs.io/en/latest/NLopt_Installation/) for the installation of Nlopt. Alternatively, you can use `pip install nlopt`, please refer to [
 nlopt-python](https://pypi.org/project/nlopt/).
 
-Optional:
-* [PyNite](https://github.com/JWock82/PyNite): A 3D structural engineering finite element library for Python, which is used herein for structural analysis. You choose any FEA solver you'd prefer (e.g. opensees) and couple it with JaxSSO.
 
 ### Quickstart
 The project provides you with interactive examples with Google Colab for quick start:
