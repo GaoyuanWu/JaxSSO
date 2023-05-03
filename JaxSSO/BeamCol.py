@@ -3,6 +3,7 @@ References
 ---------
 1. PyNite: An open-source FEA solver for python; https://github.com/JWock82/PyNite
 2. Bathe, K. J. (2006). Finite element procedures. Klaus-Jurgen Bathe.
+3. http://www.gcg.ufjf.br/pub/doc132.pdf (Transformation Matrix)
 """
 
 #Import packages needed

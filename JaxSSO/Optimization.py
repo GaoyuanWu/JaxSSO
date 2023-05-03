@@ -351,12 +351,12 @@ class Optimization():
                     normalized_grad = normalized_grad/np.max(np.abs(normalized_grad)) #normalize the gradients
                 if i>=1:
                     if self.if_ftol_rel==True:
-                        if ((f_store[i-1] - f_store[i])/f_store[i-1]) <= self.ftol_rel[0]:
+                        if abs((f_store[i-1] - f_store[i])/f_store[i-1]) <= self.ftol_rel:
                             print('Stopping criteria \'ftol_rel\' met, end of optimization')
                             
                             break
                     if self.if_ftol_abs==True:
-                        if f_store[i] <= self.ftol_abs[0]:
+                        if abs(f_store[i-1] - f_store[i]) <= self.ftol_abs:
                             print('Stopping criteria \'ftol_abs\' met, end of optimization')
                             break
 

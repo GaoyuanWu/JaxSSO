@@ -10,7 +10,7 @@ from jax import jit,vmap
 import jax.numpy as jnp
 import numpy as np
 from jax.experimental import sparse #sparse module of Jax, under active development
-
+from scipy.sparse import csr_matrix,linalg #solving the sparse linear system
 #Partial
 from functools import partial
 
@@ -176,9 +176,11 @@ class Model_Sens():
         
         return K_global
 
-    def solve(self):
+        
+    def dense_solve(self):
         '''
-        Solving [K]{u} = {f}
+        Solving [K]{u} = {f} in a dense format.
+        Jax traceable, but at the cost of computational time.
         '''
         K_dense = self.K().todense() #Convert to dense matrix
         known_indices,unknown_indices = self.bc_indices() #Get the bc indices
@@ -201,6 +203,32 @@ class Model_Sens():
         u_all = u_all.at[unknown_indices].set(u_unknown)
 
         self.u = u_all #store the displacement vector
+
+    def solve(self):
+        '''
+        Solving [K]{u} = {f} using scipy.sparse.spsolve.
+        It is fast but the final displacement is not traceable in jax.
+        For the form-finding purpose it is fine.
+        '''
+        K_BCOO = self.K() #Sparse global stiffness matrix 
+        known_indices,unknown_indices = self.bc_indices() #Get the bc indices
+
+        #Convert to CSR formart from COO
+        K_csr = csr_matrix((K_BCOO.data, (K_BCOO.indices[:,0], K_BCOO.indices[:,1])), shape=K_BCOO.shape)
+        K_11_csr = K_csr[unknown_indices,:][:,unknown_indices] # K11, unknown indices
+
+        #Load vector @ unknown indices
+        f_uk = self.f[unknown_indices]
+
+        #Solving FEA
+        u_unknown = linalg.spsolve(K_11_csr,np.array(f_uk))
+        
+        #Global displacement vector
+        u_all = np.zeros(6*len(self.nodes))
+        u_all[unknown_indices]=u_unknown
+
+        self.u = u_all #store the displacement vector
+
 
     def bc_indices(self):
         '''

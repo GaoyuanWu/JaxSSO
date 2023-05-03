@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="JaxSSO",
-    version="0.0.3",
+    version="0.0.5",
     author="Gaoyuan Wu",
     author_email="gaoyuanw@princeton.edu",
     description="A framework for structural shape optimization based on automatic differentiation (AD) and the adjoint method, enabled by JAX",
@@ -26,11 +26,9 @@ setuptools.setup(
     install_requires=[
         'numpy>=1.22.0',
         'matplotlib',
-        'jax'
+        'jax',
+        'scipy'
     ],
-    extras_require = {
-        'FEA Solver': ['PyNiteFEA']
-    },
     include_package_data = True,
     python_requires=">=3.7",
 )
