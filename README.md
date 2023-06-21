@@ -4,18 +4,27 @@ A framework for structural shape optimization based on automatic differentiation
 Developed by [Gaoyuan Wu](https://gaoyuanwu.github.io/) @ Princeton.
 
 
-We have a [preprint](https://doi.org/10.48550/arXiv.2211.15409) under review where you can find details regarding this framework.
+We have a [recent publication](https://link.springer.com/article/10.1007/s00158-023-03601-0) in [Structural and Multidisciplinary Optimization](https://www.springer.com/journal/158) where you can find details regarding this framework.
 Please share our project with others and cite us if you find it interesting and helpful.
 Cite us using:
 ```bibtex
-@misc{https://doi.org/10.48550/arxiv.2211.15409,
-  doi = {10.48550/ARXIV.2211.15409},
-  url = {https://arxiv.org/abs/2211.15409},
-  author = {Wu, Gaoyuan},
-  title = {A framework for structural shape optimization based on automatic differentiation, the adjoint method and accelerated linear algebra},
-  publisher = {arXiv},
-  year = {2022},
+@article{wu_framework_2023,
+	title = {A framework for structural shape optimization based on automatic differentiation, the adjoint method and accelerated linear algebra},
+	volume = {66},
+	issn = {1615-1488},
+	url = {https://doi.org/10.1007/s00158-023-03601-0},
+	doi = {10.1007/s00158-023-03601-0},
+	language = {en},
+	number = {7},
+	urldate = {2023-06-21},
+	journal = {Structural and Multidisciplinary Optimization},
+	author = {Wu, Gaoyuan},
+	month = jun,
+	year = {2023},
+	keywords = {Adjoint method, Automatic differentiation, Bézier surface, Form finding, JAX, Shape optimization, Shell structure},
+	pages = {151},
 }
+
 
 ```
 ## Features
@@ -59,6 +68,3 @@ The project provides you with interactive examples with Google Colab for quick s
 * [2D-arch](https://github.com/GaoyuanWu/JaxSSO/blob/main/Examples/Arch_2D.ipynb): form-finding of a 2d-arch
 * [3D-arch](https://github.com/GaoyuanWu/JaxSSO/blob/main/Examples/Arch_3D.ipynb): form-finding of a 3d-arch
 * [Mannheim Multihalle](https://github.com/GaoyuanWu/JaxSSO/blob/main/Examples/Mannheim_Multihalle.ipynb): form-finding of Mannheim Multihalle
-* [Four-point supported gridshell](https://github.com/GaoyuanWu/JaxSSO/blob/main/Examples/FourPt_FreeForm.ipynb): form-finding of a gridshell with four coner nodes pinned. The geometry is parameterized by Bezier Surface.
-* [Two-edge supported canopy, unconstrained](https://github.com/GaoyuanWu/JaxSSO/blob/main/Examples/TwoEdge_FreeForm_Unconstrained.ipynb): form-finding of a canopy. The geometry is parameterized by Bezier Surface.
-* [Two-edge supported canopy, constrained](https://github.com/GaoyuanWu/JaxSSO/blob/main/Examples/TwoEdge_FreeForm_Constrained.ipynb): form-finding of a canopy with height constraints. The geometry is parameterized by Bezier Surface.
