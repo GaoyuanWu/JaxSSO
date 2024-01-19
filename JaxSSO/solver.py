@@ -121,6 +121,7 @@ def jax_sparse_solve(K_aug, f_aug):
         1darray of the discplacement vector corresponding to the dofs of the system, augmented.
     '''
     K_aug_bcsr = sparse.BCSR.from_bcoo(K_aug) #Convert to BCSR
+    #K_aug_csr = scipy_csr_matrix((K_aug_bcsr.data, K_aug_bcsr.indices, K_aug_bcsr.indptr),shape = K_aug_bcsr.shape)
     return sparse.linalg.spsolve(K_aug_bcsr.data,K_aug_bcsr.indices,K_aug_bcsr.indptr,f_aug)
 
 
@@ -191,16 +192,20 @@ def sci_sparse_solve(K_aug, f_aug):
     u:
         1darray of the discplacement vector corresponding to the dofs of the system, augmented.
     '''
-    def callback(data, indices, indptr, _b):
-        _A = scipy_csr_matrix((data, indices, indptr))
+    def callback(data, indices, indptr, row, col, _b):
+        _A = scipy_csr_matrix((data, indices, indptr),shape = (row,col))
         return spsolve_scipy(_A, _b)
 
     K_aug_bcsr = sparse.BCSR.from_bcoo(K_aug) #Convert to BCSR
+    K_aug_nrow = K_aug_bcsr.shape[0] #Number of rows
+    K_aug_ncol = K_aug_bcsr.shape[1] #Number of columns
     u = jax.pure_callback(callback,  # callback function
                            f_aug,  # return type
                            np.array(K_aug_bcsr.data), 
                            np.array(K_aug_bcsr.indices,dtype='int32'),
                            np.array(K_aug_bcsr.indptr,dtype='int32'),
+                           K_aug_nrow,
+                           K_aug_ncol,
                            f_aug)
     return u
 

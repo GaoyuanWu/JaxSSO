@@ -1,9 +1,5 @@
 '''
 This modules take 'model' object as input and assemble the linear system Ax=b(Ku=f) for the solver to solve.
-It is essentially the mechanics of our displcacement-bsed FEA:
-1. Equilibruim
-2. Compatibility: strain-displacement relationship
-3. Constitutive eq: stress-strain
 '''
 #%%
 import numpy as np
@@ -16,7 +12,7 @@ jax.config.update("jax_enable_x64", True)
 from functools import partial
 #%%
 #---------------------------------------------------------------------
-# Basic functions: beam-columns
+# Helper functions: beam-columns
 #---------------------------------------------------------------------
 
 def element_K_beamcol(crds,E,G,Iy,Iz,J,A):
@@ -158,7 +154,7 @@ def K_beamcol(node_crds,prop,cnct,ndof):
     return K
 
 #---------------------------------------------------------------------
-# Basic functions: quad shells
+# Helper functions: quad shells
 #---------------------------------------------------------------------
 
 def element_K_quad(crds, t, E, nu, kx_mod, ky_mod):
@@ -324,7 +320,7 @@ def K_quad(node_crds,prop,cnct,ndof):
 
 
 #---------------------------------------------------------------------
-# Basic functions: stiffness matrix
+# Helper functions: stiffness matrix
 #---------------------------------------------------------------------
 
 @partial(jit,static_argnums=(2,3,4))
@@ -455,7 +451,7 @@ def f_aug_func(loads,known_dofs):
 
 
 #---------------------------------------------------------------------
-# Functions for 'model' objects
+# Helper for 'model' objects
 #---------------------------------------------------------------------
         
 def model_K(model):
@@ -507,7 +503,7 @@ def model_f_aug(model):
     return f_aug_func(model.nodal_loads,model.known_id)
 
 #---------------------------------------------------------------------
-# Functions for 'sso_model' objects
+# Helper functions for 'sso_model' objects
 #---------------------------------------------------------------------
 
 

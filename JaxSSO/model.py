@@ -346,23 +346,33 @@ class Model():
         ky_mods = np.array([[qd.ky_mod for qd in self.quads.values()]])
         return np.vstack((ts, Es, nus, kx_mods, ky_mods)).T
     
-    def solve(self,which_solver='sparse'):
+    def solve(self,which_solver='dense',enforce_scipy_sparse = True):
         '''
         Solve the linear system to obtain the displacement vector.
-
-        Solver options:
-        'sparse': using jax.experimental.sparse.spsolve
-
-        'dense': using jax.linalg.solve
+        The solver depends on the devices being used:
+            Dense:
+                cpu & gpu: jax.numpy's dense solve
+            Sparse:
+                cpu: original scipy's spsolve TODO:Should be default? Refer to Jax-FDM
+                gpu: jax.experimental.sparse.linalg.spsolve TODO: seems unstable, sometimes output "singular matrix" error when fine using dense solver
+        
+        Parameters:
+            which_meter: str, either 'sparse' or 'dense'.
+            enforce_scipy_sparse: bool, True if using scipy's sparse solver no matter what device is being used
         '''
         K_aug = mechanics.model_K_aug(self) #LHS
         f_aug = mechanics.model_f_aug(self) #RHS
         ndof = self.get_dofs() #number of dofs in the system
-        if which_solver == 'sparse':
-            self.u = solver.jax_sparse_solve(K_aug,f_aug)[:ndof]
         if which_solver == 'dense':
             self.u = solver.jax_dense_solve(K_aug,f_aug)[:ndof]
-        if which_solver == 'scipy':
-            self.u = solver.sci_sparse_solve(K_aug,f_aug)[:ndof]
-
+        elif which_solver == 'sparse':
+            if enforce_scipy_sparse:
+                self.u = solver.sci_sparse_solve(K_aug,f_aug)[:ndof]
+            else:
+                if jax.default_backend() == 'gpu':
+                    self.u = solver.jax_sparse_solve(K_aug,f_aug)[:ndof]
+                elif jax.default_backend() == 'cpu':
+                    self.u = solver.sci_sparse_solve(K_aug,f_aug)[:ndof]
+        else:
+            print("Please select the right solver: dense or sparse")
 
