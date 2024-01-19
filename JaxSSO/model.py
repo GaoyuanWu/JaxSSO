@@ -346,7 +346,7 @@ class Model():
         ky_mods = np.array([[qd.ky_mod for qd in self.quads.values()]])
         return np.vstack((ts, Es, nus, kx_mods, ky_mods)).T
     
-    def solve(self,which_solver='dense',enforce_scipy_sparse = True):
+    def solve(self,which_solver='sparse',enforce_scipy_sparse = True):
         '''
         Solve the linear system to obtain the displacement vector.
         The solver depends on the devices being used:

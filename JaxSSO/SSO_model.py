@@ -92,12 +92,13 @@ class SSO_model():
         '''
         Initialize the SSO_model that is ready for sensitivity analysis
         '''
+        self.model.model_ready()#make model ready
         self.nodeparameters_values = self.model.crds[self.nodeparameters_tags,self.nodeparameters_xyzs] 
 
     #-------------------------------------------------------------------------
     #Some methods: from parameters to results
     #-------------------------------------------------------------------------
-    def node_params_u(self,nodeparameter_values,which_solver='sparse'):
+    def node_params_u(self,nodeparameter_values,which_solver,enforce_scipy_sparse):
         '''
         Helper function that takes node parameters and outputs displacement vector.
         '''
@@ -106,28 +107,34 @@ class SSO_model():
         K_aug = mechanics.K_aug_func(node_crds,self.model.ndof,self.model.known_id,self.model.n_beamcol,self.model.cnct_beamcols,self.model.prop_beamcols,
                 self.model.n_quad,self.model.cnct_quads,self.model.prop_quads) #Augmented stiffness matrix
         f_aug = mechanics.f_aug_func(self.model.nodal_loads,self.model.known_id) #Augmented loading vector
-    
-        if which_solver == 'sparse':
-            u = solver.jax_sparse_solve(K_aug,f_aug)[:self.model.ndof] #Sparse solve
-        elif which_solver == 'dense':
-            u = solver.jax_dense_solve(K_aug,f_aug)[:self.model.ndof] #Dense solve
         
+        #Which solver to use
+        if which_solver == 'dense':
+            u = solver.jax_dense_solve(K_aug,f_aug)[:self.model.ndof]
+        elif which_solver == 'sparse':
+            if enforce_scipy_sparse:
+                u = solver.sci_sparse_solve(K_aug,f_aug)[:self.model.ndof]
+            else:
+                if jax.default_backend() == 'gpu':
+                    u = solver.jax_sparse_solve(K_aug,f_aug)[:self.model.ndof]
+                elif jax.default_backend() == 'cpu':
+                    u = solver.sci_sparse_solve(K_aug,f_aug)[:self.model.ndof]        
         return u
     
-    def node_params_c(self,nodeparameter_values,which_solver='sparse'):
+    def node_params_c(self,nodeparameter_values,which_solver,enforce_scipy_sparse):
         '''
         Helper function that takes node parameters and outputs the strain energy
         '''
         f_aug = mechanics.f_aug_func(self.model.nodal_loads,self.model.known_id) #Augmented loading vector
-        u = self.node_params_u(nodeparameter_values,which_solver)
+        u = self.node_params_u(nodeparameter_values,which_solver,enforce_scipy_sparse)
         
         return 0.5*f_aug[:self.model.ndof]@u
 
-    def grad_c_node(self):
+    def grad_c_node(self,which_solver='sparse',enforce_scipy_sparse = True):
         '''
         Sensitivity of the strain energy wrt parameters
         '''
-        return grad(self.node_params_c,argnums=0)(self.nodeparameters_values)
+        return grad(self.node_params_c,argnums=0)(self.nodeparameters_values,which_solver,enforce_scipy_sparse)
 
 
         

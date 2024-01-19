@@ -235,17 +235,17 @@ def sci_sparse_solve_bwd(res, g):
     # A.T @ lambda = g
     lam = sci_sparse_solve(K_aug.T, g)
 
-    # the implicit constraint function for implicit differentiation
+     # the implicit constraint function for implicit differentiation
     def f_Ax_b(params):
         K_aug, f_aug = params
-        return K_aug@u_aug - f_aug
+        return -1*(K_aug@u_aug - f_aug)
 
     params = (K_aug, f_aug)
 
     # Call vjp of residual_fn to compute gradient wrt params
-    vjp_f = jax.vjp(f_Ax_b, params)[1] #Get the function vjp for f_Ax_b @ (K_aug, f_aug)
+    f_primal,vjp_f = jax.vjp(f_Ax_b, params) #Get the function vjp for f_Ax_b @ (K_aug, f_aug)
 
-    return -1*vjp_f(lam) #Call it @ lamdba
+    return vjp_f(lam)[0] #Call it @ lamdba
 
 sci_sparse_solve.defvjp(sci_sparse_solve_fwd, sci_sparse_solve_bwd) #Register vjp for backward mode AD
 
