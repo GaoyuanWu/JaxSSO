@@ -12,13 +12,13 @@ import numpy as np
  
 
 import jax.numpy as jnp
-from jax import vmap,jit,jacfwd,jacrev,grad
+from jax import vmap,jit,jacfwd,jacrev,grad,value_and_grad
 from jax.experimental import sparse
 import jax
 jax.config.update("jax_enable_x64", True)
 from functools import partial
 
-from . import mechanics,solver
+from . import assemblemodel,solver
 
 #------------------------------------------
 # Parameter types
@@ -95,6 +95,17 @@ class SSO_model():
         self.model.model_ready()#make model ready
         self.nodeparameters_values = self.model.crds[self.nodeparameters_tags,self.nodeparameters_xyzs] 
 
+    def update_nodeparameter(self,params_values):
+        '''
+        Update nodeparameter values for both model and sso_model
+        '''
+        #Update in sso_model
+        self.nodeparameters_values = params_values
+
+        #Update in model
+        self.model.nodes_struct.update_node(self.nodeparameters_xyzs,self.nodeparameters_values)
+        #TODO: FOR-LOOPS Might Be Slow? Register Node as JAX-Type and Write Some Vmapped Functions?
+
     #-------------------------------------------------------------------------
     #Some methods: from parameters to results
     #-------------------------------------------------------------------------
@@ -104,9 +115,9 @@ class SSO_model():
         '''
         node_crds = self.model.crds.at[self.nodeparameters_tags,self.nodeparameters_xyzs].set(nodeparameter_values) #update nodal coordinates
 
-        K_aug = mechanics.K_aug_func(node_crds,self.model.ndof,self.model.known_id,self.model.n_beamcol,self.model.cnct_beamcols,self.model.prop_beamcols,
+        K_aug = assemblemodel.K_aug_func(node_crds,self.model.ndof,self.model.known_id,self.model.n_beamcol,self.model.cnct_beamcols,self.model.prop_beamcols,
                 self.model.n_quad,self.model.cnct_quads,self.model.prop_quads) #Augmented stiffness matrix
-        f_aug = mechanics.f_aug_func(self.model.nodal_loads,self.model.known_id) #Augmented loading vector
+        f_aug = assemblemodel.f_aug_func(self.model.nodal_loads,self.model.known_id) #Augmented loading vector
         
         #Which solver to use
         if which_solver == 'dense':
@@ -125,17 +136,26 @@ class SSO_model():
         '''
         Helper function that takes node parameters and outputs the strain energy
         '''
-        f_aug = mechanics.f_aug_func(self.model.nodal_loads,self.model.known_id) #Augmented loading vector
+        f_aug = assemblemodel.f_aug_func(self.model.nodal_loads,self.model.known_id) #Augmented loading vector
         u = self.node_params_u(nodeparameter_values,which_solver,enforce_scipy_sparse)
         
         return 0.5*f_aug[:self.model.ndof]@u
 
+    def value_and_grad_c_node(self,which_solver='sparse',enforce_scipy_sparse = True):
+        '''
+        Sensitivity and value of the strain energy wrt parameters
+        '''
+        return value_and_grad(self.node_params_c,argnums=0)(self.nodeparameters_values,which_solver,enforce_scipy_sparse)
+    
     def grad_c_node(self,which_solver='sparse',enforce_scipy_sparse = True):
         '''
         Sensitivity of the strain energy wrt parameters
         '''
         return grad(self.node_params_c,argnums=0)(self.nodeparameters_values,which_solver,enforce_scipy_sparse)
 
+    #-------------------------------------------------------------------------
+    #Some methods: update parameters in SSO model
+    #-------------------------------------------------------------------------
 
         
 

@@ -6,8 +6,9 @@ Functions for: adding nodes, adding supports, adding loads, etc.
 import numpy as np
 import jax.numpy as jnp
 from .element import BeamCol,Truss,Quad
-from . import solver,mechanics
+from . import solver,assemblemodel
 import jax
+from jax.tree_util import register_pytree_node_class
 jax.config.update("jax_enable_x64", True)
 
 
@@ -32,7 +33,7 @@ class Node():
 
 class Model():
     '''
-    The FEA model yet to be analyzed.
+    The FE model yet to be analyzed.
     '''
 
     def __init__(self):
@@ -40,12 +41,12 @@ class Model():
         Initialize a 'Model' object.
 
         """
-        
+
         self.nodes = {} #dictionary for the nodes: key is nodeTag, value is a list of [nodes_x,nodes_y,nodes_z]
-        self.beamcols = {}    # Beam-columns in the system
-        self.trusses = {}    # Trusses in the system
-        self.quads = {} #MITC-4 quad shell elements
-        self.elements = {} #including all the elements
+        self.beamcols = {}    # dictionary for the beamcols: key is eleTag, value is a list of beamcol attributes
+        #self.trusses = {}    # Trusses in the system, TODO: NOT YET IMPLEMENTED
+        self.quads = {} # dictionary for the MITC-4 quad shell elements: key is eleTag, value is a list of beamcol attributes
+        #self.elements = {} #including all the elements, TODO
         self.known_indices = [] #Storing the indices of the known dofs
         self.f = {} #nodal loads
         self.u = None # FE results
@@ -65,26 +66,31 @@ class Model():
             the coordinates of thie node
 
         '''
-        this_node = Node(nodeTag,X,Y,Z)
-        # Add the new node/updating an existing node to model
-        self.nodes[nodeTag] = this_node
+        key = nodeTag #key
+        attr = [X,Y,Z] #attributes
+        self.nodes[key] = attr # Add the new node/updating an existing node to model
 
-    def update_node(self, nodeTag:int, X:int, Y:int, Z:int):
+    def update_node(self, nodeTag:int, XYZ:int, value:float):
         '''
         Update the nodal coordinates.
 
         Parameters:
         -----
         nodeTag: int 
-            the tag/index of this node
+            the tag/index of the node you want to modify
 
-        X, Y, Z: float
-            the coordinates of thie node
+        XYZ: int
+            take a value from (0,1,2), indicating which coordinate (x or y or z) to modify
+        
+        value: float
+            new value
 
         '''
-        this_node = Node(nodeTag,X,Y,Z)
         # Updating an existing node to model
-        self.nodes[nodeTag] = this_node
+        try:
+            self.nodes[nodeTag][XYZ] = value
+        except:
+            print("Node {} does not exist in the model".format(nodeTag))
 
     def add_beamcol(self, eleTag:int, i_nodeTag:int, j_nodeTag:int, E:float, G:float,
                      Iy:float, Iz:float, J:float, A:float):
@@ -117,12 +123,8 @@ class Model():
         A: float
             Area of cross section
         '''
-        node_i = self.nodes[i_nodeTag] #first node
-        node_j = self.nodes[j_nodeTag] #second node
-        ele_crds = [node_i.X,node_i.Y,node_i.Z,node_j.X,node_j.Y,node_j.Z] #coordinates
-
         #Create/update a beam-column and save it to the dictionary
-        new_beamcol = BeamCol(eleTag, node_i.nodeTag, node_j.nodeTag, ele_crds, E, G, Iy, Iz, J, A)
+        new_beamcol = BeamCol(eleTag, i_nodeTag, j_nodeTag, E, G, Iy, Iz, J, A)
         self.beamcols[eleTag] = new_beamcol
 
     def add_truss(self, eleTag:int, i_nodeTag:int, j_nodeTag:int, E:float, A:float):
@@ -146,13 +148,7 @@ class Model():
         A: float
             Area of cross section
         '''
-        node_i = self.nodes[i_nodeTag] #first node
-        node_j = self.nodes[j_nodeTag] #second node
-        ele_crds = [node_i.X,node_i.Y,node_i.Z,node_j.X,node_j.Y,node_j.Z] #coordinates
-
-        #Create/update a beam-column and save it to the dictionary
-        new_truss = Truss(eleTag, node_i.nodeTag, node_j.nodeTag, ele_crds, E, A)
-        self.trusses[eleTag] = new_truss
+        pass
     
     def add_quad(self, eleTag:int, i_nodeTag:int, j_nodeTag:int, m_nodeTag:int, n_nodeTag:int, 
                 t:float, E:float, nu:float, kx_mod=1.0, ky_mod=1.0):
@@ -179,17 +175,9 @@ class Model():
         kx_mod, ky_mod: float
             Stiffness modification factor
         '''
-        node_i = self.nodes[i_nodeTag] #first node
-        node_j = self.nodes[j_nodeTag] #second node
-        node_m = self.nodes[m_nodeTag] #third node
-        node_n = self.nodes[n_nodeTag] #fourth node
-        
-        ele_crds = [node_i.X,node_i.Y,node_i.Z,node_j.X,node_j.Y,node_j.Z,
-                    node_m.X,node_m.Y,node_m.Z,node_n.X,node_n.Y,node_n.Z] #coordinates
-
         #Create/update a beam-column and save it to the dictionary
         new_quad = Quad(eleTag, i_nodeTag, j_nodeTag, m_nodeTag, n_nodeTag, 
-                ele_crds, t, E, nu, kx_mod, ky_mod)
+                t, E, nu, kx_mod, ky_mod)
         self.quads[eleTag] = new_quad
     
     def add_support(self,nodeTag,active_supports=[1,1,1,1,1,1]):
@@ -225,16 +213,19 @@ class Model():
         '''
         self.f[nodeTag] = nodal_load
     
-    # A function called model_freeze.
-    # Which updates some attributes of the model, such as node_crds, loads, etc.
-
+    #-------------------------------------------------------------------------------
+    # Warm up the model using 'model_ready' to 'freeze' the model ready for analysis
+    # Will be fed to/modified by 'SSO_model' if doing optimization
+    #-------------------------------------------------------------------------------
+    
     def model_ready(self):
         '''
         Update attributes of the model, such as node_crds, loads, etc. Essential before conducting FEA or optimization.
         '''
-        #node coordinates
-        self.crds = self.get_node_crds()
-
+                
+        #Nodal coordinates
+        self.crds = self.get_node_crds() 
+        
         #Nodal loads
         self.nodal_loads = jnp.array(self.get_loads()) #jnp.conversion needed
 
@@ -243,7 +234,7 @@ class Model():
 
         #Dof
         self.ndof = self.get_dofs()
-
+                
         #Beamcols
         self.n_beamcol = len(self.beamcols)
         self.cnct_beamcols = self.get_cnct_beamcols()
@@ -252,16 +243,16 @@ class Model():
         #Quads
         self.n_quad = len(self.quads)
         self.cnct_quads = self.get_cnct_quads()
-        self.prop_quads = self.get_quads_cross_prop()
+        self.prop_quads = self.get_quads_cross_prop()        
 
     def get_node_crds(self):
         '''
         Get the coordinates of all nodes.
         Return a 2D array of shape (n_node,3)
         '''
-        xs = jnp.array([[nd.X for nd in self.nodes.values()]],dtype=float)
-        ys = jnp.array([[nd.Y for nd in self.nodes.values()]],dtype=float)
-        zs = jnp.array([[nd.Z for nd in self.nodes.values()]],dtype=float)
+        xs = jnp.array([[xyz[0] for xyz in self.nodes.values()]],dtype=float)
+        ys = jnp.array([[xyz[1] for xyz in self.nodes.values()]],dtype=float)
+        zs = jnp.array([[xyz[2] for xyz in self.nodes.values()]],dtype=float)
         return jnp.vstack((xs,ys,zs)).T
     
     def get_loads(self):
@@ -360,8 +351,8 @@ class Model():
             which_meter: str, either 'sparse' or 'dense'.
             enforce_scipy_sparse: bool, True if using scipy's sparse solver no matter what device is being used
         '''
-        K_aug = mechanics.model_K_aug(self) #LHS
-        f_aug = mechanics.model_f_aug(self) #RHS
+        K_aug = assemblemodel.model_K_aug(self) #LHS
+        f_aug = assemblemodel.model_f_aug(self) #RHS
         ndof = self.get_dofs() #number of dofs in the system
         if which_solver == 'dense':
             self.u = solver.jax_dense_solve(K_aug,f_aug)[:ndof]
@@ -376,3 +367,8 @@ class Model():
         else:
             print("Please select the right solver: dense or sparse")
 
+    def strain_energy(self):
+        if self.u != None:
+            return 0.5 * self.nodal_loads @ self.u
+        else:
+            print("Model has not been analyzed yet.")

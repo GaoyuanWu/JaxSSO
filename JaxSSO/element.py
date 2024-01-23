@@ -15,7 +15,8 @@ References
 import jax.numpy as jnp
 import numpy as np
 from functools import partial
-from jax import  jit
+from jax import  jit,vmap
+from jax.experimental import sparse
 import jax
 jax.config.update("jax_enable_x64", True)
 
@@ -31,9 +32,6 @@ class BeamCol():
 
     i_nodeTag, j_nodeTag: int
         The tags of the i-node and j-node
-
-    ele_crds: array-like of shape (6,)
-        Coordinates of the i-node and j-node: (x_i,y_i,z_i,x_j,y_j,z_j)
 
     E: float
         Young's modulus
@@ -51,14 +49,13 @@ class BeamCol():
         Area of cross section
     '''
         
-    def __init__(self, eleTag, i_nodeTag, j_nodeTag, crds, E, G, Iy, Iz, J, A):
+    def __init__(self, eleTag, i_nodeTag, j_nodeTag, E, G, Iy, Iz, J, A):
         
         #Inputs, Children of Pytree
         self.dofs = 2 * 6 #number of dofs of this element
         self.eleTag = eleTag    # Element tag
         self.i_nodeTag = i_nodeTag # i-node tag
         self.j_nodeTag = j_nodeTag
-        self.ele_crds = crds #coordinates
         self.E = E  # The modulus of elasticity of the element
         self.G = G  # The shear modulus of the element
         self.Iy = Iy  # The y-axis moment of inertia
@@ -129,11 +126,158 @@ class BeamCol():
                         [zeros_entry,      6*E*Iz/L**2,   zeros_entry,             zeros_entry,      zeros_entry,            2*E*Iz/L,     zeros_entry,      -6*E*Iz/L**2,  zeros_entry,             zeros_entry,      zeros_entry,            4*E*Iz/L]])
     
         return k
+    
+    @staticmethod
+    def element_K_beamcol(crds,E,G,Iy,Iz,J,A):
+        '''
+        Given the attributes of a beam-column. Return element's stiffness matrix in global coordinate system.
+        The element's stiffness matrix is flattened (raveled).
+        '''
+        ele_K_local = BeamCol.K_local(crds,E,G,Iy,Iz,J,A) # Element's stiffness matrix, before coordinate trnasformation
+        ele_T = BeamCol.T(crds) #Coordinate transormation matrix
+        ele_K_global = jnp.matmul(jnp.linalg.solve(ele_T,ele_K_local),ele_T)
+        return ele_K_global
+    
+    @staticmethod
+    def element_K_beamcol_indices(i_nodeTag,j_nodeTag):
+        '''
+        Given the node tags of a beam-column, return the corresponding indices (rows, columns) of this beam column in the global stiffness matrix.
+        '''
+        indices_dof = jnp.hstack((jnp.linspace(i_nodeTag*6,i_nodeTag*6+5,6,dtype='int32'),jnp.linspace(j_nodeTag*6,j_nodeTag*6+5,6,dtype='int32'))) #indices represented the dofs of this beamcol
+        rows,cols = jnp.meshgrid(indices_dof,indices_dof,indexing='ij')#rows and columns
+        indices = jnp.vstack((rows.ravel(),cols.ravel())).T #indices in global stiffness matrix
+        return indices
+
+
+    #--------------------------------------------
+    # The following methods are 'vmapped' (vectorized)
+    # that are used to output attributes for ALL beamcolumns in the system
+    #--------------------------------------------
+    
+    @staticmethod
+    @jit
+    def K_local_beamcol(node_crds,prop,cnct):
+        '''
+        Return ndarray that stores the local stiffness matrix of ALL beam-columns.
+
+        Parameters:
+        ----------
+        node_crds:
+            ndarray storing nodal coordinates, shape of (n_node,3)
+
+        prop:
+            ndarray storing all sectional properties, shape 0 is n_beamcol
+
+        cnct:
+            ndarray storing the connectivity matrix, shape of (n_beamcol,2)
+
+        
+        Returns:
+        ------
+        k_local: ndarray of shape (n_beamcol,12,12)
+        '''
+        # 1D array of sectional properties
+        Es = prop[:,0] # Young's modulus
+        Gs = prop[:,1] # Shear modulus
+        Iys = prop[:,2] # Moment of inertia
+        Izs = prop[:,3] # Moment of inertia
+        Js = prop[:,4] # Polar moment of inertia
+        As = prop[:,5] # Sectional area
+
+        # Connectivity matrix
+        i_nodeTags = cnct[:,0] # i-node tags
+        j_nodeTags = cnct[:,1] # j-node tags
+
+        # Convert nodal coordinates to beamcol coordinates
+        i_crds = node_crds[i_nodeTags,:] #shape of (n_beamcol,3)
+        j_crds = node_crds[j_nodeTags,:] #shape of (n_beamcol,3)
+        e_crds = jnp.hstack((i_crds,j_crds)) #shape of (n_beamcol,6)
+
+        return vmap(BeamCol.K_local,in_axes=(0,0,0,0,0,0,0,))(e_crds,Es,Gs,Iys,Izs,Js,As) # Element's stiffness matrix, before coordinate trnasformation
+
+    @staticmethod
+    @jit
+    def T_beamcol(node_crds,cnct):
+        '''
+        Return ndarray that stores all the coordinate transformation matrix of all beam-columns.
+
+        Parameters:
+        ----------
+        node_crds:
+            ndarray storing nodal coordinates, shape of (n_node,3)
+
+        cnct:
+            ndarray storing the connectivity matrix, shape of (n_beamcol,2)
+
+        
+        Returns:
+        ------
+        T: ndarray of shape (n_beamcol,12,12)
+        '''
+        # Connectivity matrix
+        i_nodeTags = cnct[:,0] # i-node tags
+        j_nodeTags = cnct[:,1] # j-node tags
+
+        # Convert nodal coordinates to beamcol coordinates
+        i_crds = node_crds[i_nodeTags,:] #shape of (n_beamcol,3)
+        j_crds = node_crds[j_nodeTags,:] #shape of (n_beamcol,3)
+        e_crds = jnp.hstack((i_crds,j_crds)) #shape of (n_beamcol,6)
+
+        return vmap(BeamCol.T,in_axes=(0))(e_crds)
+
+    @staticmethod
+    @partial(jit,static_argnums=(3))
+    def K_beamcol(node_crds,prop,cnct,ndof):
+        '''
+        Return the global stiffness contribution of beam-columns in JAX's sparse BCOO format.
+
+        Parameters:
+        ----------
+        node_crds:
+            ndarray storing nodal coordinates, shape of (n_node,3)
+
+        prop:
+            ndarray storing all sectional properties, shape 0 is n_beamcol
+
+        cnct:
+            ndarray storing the connectivity matrix, shape of (n_beamcol,2)
+        
+        ndof:
+            number of dof in the system, int
+        
+        Returns:
+        ------
+        K:
+            jax.experimental.sparse.BCOO matrix
+        '''
+        # 1D array of sectional properties
+        Es = prop[:,0] # Young's modulus
+        Gs = prop[:,1] # Shear modulus
+        Iys = prop[:,2] # Moment of inertia
+        Izs = prop[:,3] # Moment of inertia
+        Js = prop[:,4] # Polar moment of inertia
+        As = prop[:,5] # Sectional area
+
+        # Connectivity matrix
+        i_nodeTags = cnct[:,0] # i-node tags
+        j_nodeTags = cnct[:,1] # j-node tags
+
+        # Convert nodal coordinates to beamcol coordinates
+        i_crds = node_crds[i_nodeTags,:] #shape of (n_beamcol,3)
+        j_crds = node_crds[j_nodeTags,:] #shape of (n_beamcol,3)
+        e_crds = jnp.hstack((i_crds,j_crds)) #shape of (n_beamcol,6)
+
+        data = jnp.ravel(vmap(BeamCol.element_K_beamcol)(e_crds,Es,Gs,Iys,Izs,Js,As))  #Get the stiffness values, raveled
+        data = data.reshape(-1) # re-dimension the data to 1darray (144*n_beamcol,)
+        indices = vmap(BeamCol.element_K_beamcol_indices)(i_nodeTags,j_nodeTags) # Get the indices
+        indices = indices.reshape(-1,2) #re-dimension to 2darray of shape (144*n_beamcol,2)
+        K= sparse.BCOO((data,indices),shape=(ndof,ndof))
+        return K
 
 #%%
 class Truss():
     '''
-    A class for a truss element.
+    A class for a truss element.TODO
 
     Parameters
     -----
@@ -143,9 +287,6 @@ class Truss():
     i_nodeTag, j_nodeTag: int
         The tags of the i-node and j-node
 
-    ele_crds: jnp.array of shape (6,)
-        Coordinates of the i-node and j-node: (x_i,y_i,z_i,x_j,y_j,z_j)
-
     E: float
         Young's modulus
 
@@ -153,14 +294,13 @@ class Truss():
         Area of cross section
     '''
         
-    def __init__(self, eleTag, i_nodeTag, j_nodeTag, crds, E, A):
+    def __init__(self, eleTag, i_nodeTag, j_nodeTag, E, A):
         
         #Inputs, Children of Pytree
         self.dofs = 2 * 6 #number of dofs of this element
         self.eleTag = eleTag    # Element tag
         self.i_nodeTag = i_nodeTag # i-node tag
         self.j_nodeTag = j_nodeTag
-        self.ele_crds = crds #coordinates
         self.E = E  # The modulus of elasticity of the element
         self.A = A  # The cross-sectional area
 
@@ -212,9 +352,6 @@ class Quad():
 
     i_nodeTag, j_nodeTag, m_nodeTag, n_nodeTag: int
         Node tag of i-node and j-node of the element
-
-    crds: 1d array of shape (12,)
-        The coordinate of the 4 nodes of this element (xi,yi,zi,xj,yj,zj,xm,ym,zm,xn,yn,zn).
     
     t: float
         Thickness
@@ -232,7 +369,7 @@ class Quad():
         Stiffness modification factor for local y axis
     '''
     def __init__(self, eleTag, i_nodeTag, j_nodeTag, m_nodeTag, n_nodeTag, 
-                crds, t, E, nu, kx_mod=1.0, ky_mod=1.0):
+                t, E, nu, kx_mod=1.0, ky_mod=1.0):
         
         #Inputs
         self.dofs = 4*6 #numbder of dofs of this element
@@ -241,7 +378,6 @@ class Quad():
         self.j_nodeTag = j_nodeTag #j-node's tag
         self.m_nodeTag = m_nodeTag #m-node's tag
         self.n_nodeTag = n_nodeTag #n-node's tag
-        self.ele_crds = crds #Coordinates
         self.t = t # The thickness of the element
         self.E = E  # The modulus of elasticity of the element
         self.nu = nu  # The Poisson's ratio
@@ -267,7 +403,7 @@ class Quad():
         area_2 = jnp.linalg.norm(jnp.cross(edge_34, edge_32)) * 0.5
         return area_1+area_2
     @staticmethod
-    def loc_crds_new(crds):
+    def loc_crds(crds):
         ''' 
         Get the nodal coordinates in local coordinate system.
         This local coordinate system is different than coventional local coordiante of quad to avoid non-differentialbility.
@@ -320,17 +456,10 @@ class Quad():
         return new_xys,normal,normal_tri1,normal_tri2
     
     @staticmethod
-    def loc_crds(crds):
+    def loc_crds_old(crds):
         ''' 
         Get the nodal coordinates in local coordinate system.
-        This local coordinate system is different than coventional local coordiante of quad to avoid non-differentialbility.
-
-        # Non-differentiable when alpha/beta == 0  
-        # which means we have to avoid the scenario when r-axis/s-axis is parallel to local x-axis
-        # in conventional local coordinate, it is very common.
-        # In our cooridinate system, the local 3-1 vector is the local x-axis. which can avoid the
-        # aforementioned issue.
-        
+        This local coordinate system is the coventional local coordiante of quad but causes non-differentialbility.        
         '''
 
         # The vector from node 3 to other nodes
@@ -371,8 +500,9 @@ class Quad():
         normal_tri1 = z_axis_tri1
         normal_tri2 = z_axis_tri2
         return new_xys,normal,normal_tri1,normal_tri2
+    
     @staticmethod
-    def T(crds):
+    def T_old(crds):
         '''
         Returns the coordinate transformation matrix for the quad element.
         This is the conventional coordinate system that may cause non-differentiability problems.
@@ -428,7 +558,7 @@ class Quad():
         return T
       
     @staticmethod
-    def T_new(crds):
+    def T(crds):
         '''
         Returns the coordinate transformation matrix for the quad element.
         '''
@@ -856,3 +986,173 @@ class Quad():
         k_exp = k_exp.at[m_arr,n_arr].set(k[i_arr,j_arr]) 
         
         return k_exp
+    
+    @staticmethod
+    def element_K_quad(crds, t, E, nu, kx_mod, ky_mod):
+        '''
+        Given the attributes of a quad. Return element's stiffness matrix in global coordinate system.
+        The element's stiffness matrix is flattened (raveled).
+        '''
+        ele_Km = Quad.k_m(crds, t, E, nu, Quad.loc_crds, Quad.Cm, Quad.B_m, Quad.J, Quad.index_k_m, kx_mod, ky_mod) # Element's stiffness matrix (membrane), before coordinate trnasformation.
+        ele_Kb = Quad.k_b(crds, t, E, nu, Quad.Cb, Quad.Cs, Quad.J, Quad.B_kappa, Quad.loc_crds, Quad.B_gamma_MITC4, Quad.index_k_b, kx_mod=1.0, ky_mod=1.0) # Element's stiffness matrix (bending), before coordinate trnasformation.
+        ele_K = ele_Km + ele_Kb #Sum bending & membrane contribution
+        ele_T = Quad.T(crds) #Coordinate transormation matrix
+        ele_K_global = jnp.matmul(jnp.linalg.solve(ele_T,ele_K),ele_T)
+        return ele_K_global
+
+    @staticmethod
+    def element_K_quad_local(crds, t, E, nu, kx_mod, ky_mod):
+        '''
+        Given the attributes of a quad. Return element's stiffness matrix in global coordinate system.
+        The element's stiffness matrix is flattened (raveled).
+        '''
+        ele_Km = Quad.k_m(crds, t, E, nu, Quad.loc_crds, Quad.Cm, Quad.B_m, Quad.J, Quad.index_k_m, kx_mod, ky_mod) # Element's stiffness matrix (membrane), before coordinate trnasformation.
+        ele_Kb = Quad.k_b(crds, t, E, nu, Quad.Cb, Quad.Cs, Quad.J, Quad.B_kappa, Quad.loc_crds, Quad.B_gamma_MITC4, Quad.index_k_b, kx_mod=1.0, ky_mod=1.0) # Element's stiffness matrix (bending), before coordinate trnasformation.
+        ele_K = ele_Km + ele_Kb #Sum bending & membrane contribution
+        return ele_K
+
+    @staticmethod
+    def element_K_quad_indices(i_nodeTag,j_nodeTag,m_nodeTag,n_nodeTag):
+        '''
+        Given the node tags of a quad shell, return the corresponding indices (rows, columns) of this quad in the global stiffness matrix.
+        '''
+        indices_dof = jnp.hstack((jnp.linspace(i_nodeTag*6,i_nodeTag*6+5,6,dtype='int32'),jnp.linspace(j_nodeTag*6,j_nodeTag*6+5,6,dtype='int32'),
+                        jnp.linspace(m_nodeTag*6,m_nodeTag*6+5,6,dtype='int32'),jnp.linspace(n_nodeTag*6,n_nodeTag*6+5,6,dtype='int32'))) #indices represented the dofs of this quad
+        rows,cols = jnp.meshgrid(indices_dof,indices_dof,indexing='ij')#rows and columns
+        indices = jnp.vstack((rows.ravel(),cols.ravel())).T #indices in global stiffness matrix
+        return indices
+
+    #--------------------------------------------
+    # The following methods are 'vmapped' (vectorized)
+    # that are used to output attributes for ALL quad-shells in the system
+    #--------------------------------------------
+
+    @staticmethod
+    @jit
+    def K_local_quad(node_crds,prop,cnct):
+        '''
+        Return ndarray that stores the local stiffness matrix of all beam-columns.
+
+        Parameters:
+        ----------
+        node_crds:
+            ndarray storing nodal coordinates, shape of (n_node,3)
+
+        prop:
+            ndarray storing all sectional properties, shape 0 is n_quad:t, E, nu, kx_mod, ky_mod
+
+        cnct:
+            ndarray storing the connectivity matrix, shape of (n_quad,4)
+
+        
+        Returns:
+        ------
+        k_local: ndarray of shape (n_quad,24,24)
+        '''
+        # 1D array of sectional properties
+        ts = prop[:,0] 
+        Es = prop[:,1] 
+        nus = prop[:,2] 
+        kx_mods = prop[:,3] 
+        ky_mods = prop[:,4] 
+
+        # Connectivity matrix
+        i_nodeTags = cnct[:,0] # i-node tags
+        j_nodeTags = cnct[:,1] # j-node tags
+        m_nodeTags = cnct[:,2] # m-node tags
+        n_nodeTags = cnct[:,3] # n-node tags
+
+        # Convert nodal coordinates to beamcol coordinates
+        i_crds = node_crds[i_nodeTags,:] #shape of (n_quad,3)
+        j_crds = node_crds[j_nodeTags,:] #shape of (n_quad,3)
+        m_crds = node_crds[m_nodeTags,:] #shape of (n_quad,3)
+        n_crds = node_crds[n_nodeTags,:] #shape of (n_quad,3)
+        e_crds = jnp.hstack((i_crds,j_crds,m_crds,n_crds)) #shape of (n_quad,12)
+
+        return vmap(Quad.element_K_quad_local)(e_crds,ts,Es,nus,kx_mods,ky_mods)
+
+    @jit
+    def T_quad(node_crds,cnct):
+        '''
+        Return ndarray that stores all the coordinate transformation matrix of all beam-columns.
+
+        Parameters:
+        ----------
+        node_crds:
+            ndarray storing nodal coordinates, shape of (n_node,3)
+
+        cnct:
+            ndarray storing the connectivity matrix, shape of (n_quad,4)
+
+        
+        Returns:
+        ------
+        T: ndarray of shape (n_quad,24,24)
+        '''
+        # Connectivity matrix
+        i_nodeTags = cnct[:,0] # i-node tags
+        j_nodeTags = cnct[:,1] # j-node tags
+        m_nodeTags = cnct[:,2] # m-node tags
+        n_nodeTags = cnct[:,3] # n-node tags
+
+        # Convert nodal coordinates to beamcol coordinates
+        i_crds = node_crds[i_nodeTags,:] #shape of (n_quad,3)
+        j_crds = node_crds[j_nodeTags,:] #shape of (n_quad,3)
+        m_crds = node_crds[m_nodeTags,:] #shape of (n_quad,3)
+        n_crds = node_crds[n_nodeTags,:] #shape of (n_quad,3)
+        e_crds = jnp.hstack((i_crds,j_crds,m_crds,n_crds)) #shape of (n_quad,12)
+
+        return vmap(Quad.T,in_axes=(0))(e_crds)
+
+    @partial(jit,static_argnums=(3))
+    def K_quad(node_crds,prop,cnct,ndof):
+        '''
+        Return the global stiffness contribution of quads in JAX's sparse BCOO format.
+
+        Parameters:
+        ----------
+        node_crds:
+            ndarray storing nodal coordinates, shape of (n_node,3)
+
+        prop:
+            ndarray storing all sectional properties, shape 0 is n_quad
+
+        cnct:
+            ndarray storing the connectivity matrix, shape of (n_quad,4)
+        
+        ndof:
+            number of dof in the system, int
+        
+        Returns:
+        ------
+        K:
+            jax.experimental.sparse.BCOO matrix
+        '''
+        # 1D array of sectional properties: t, E, nu, kx_mod, ky_mod
+        ts = prop[:,0] # Thickness
+        Es = prop[:,1] # Young's modulus
+        nus = prop[:,2] # Poison's ratio
+        kx_mods = prop[:,3] # Stiffness modification coefficient, along x
+        ky_mods = prop[:,4] # Stiffness modification coefficient, along y
+
+
+        # Connectivity matrix
+        i_nodeTags = cnct[:,0] # i-node tags
+        j_nodeTags = cnct[:,1] # j-node tags
+        m_nodeTags = cnct[:,2] # m-node tags
+        n_nodeTags = cnct[:,3] # n-node tags
+
+        # Convert nodal coordinates to quad coordinates
+        i_crds = node_crds[i_nodeTags,:] #shape of (n_quad,3)
+        j_crds = node_crds[j_nodeTags,:] #shape of (n_quad,3)
+        m_crds = node_crds[m_nodeTags,:] #shape of (n_quad,3)
+        n_crds = node_crds[n_nodeTags,:] #shape of (n_quad,3)
+        
+        e_crds = jnp.hstack((i_crds,j_crds,m_crds,n_crds)) #shape of (n_quad,12)
+
+        data = jnp.ravel(vmap(Quad.element_K_quad)(e_crds,ts,Es,nus,kx_mods,ky_mods))  #Get the stiffness values, raveled
+        data = data.reshape(-1) # re-dimension the data to 1darray (576*n_quad,)
+        indices = vmap(Quad.element_K_quad_indices)(i_nodeTags,j_nodeTags,m_nodeTags,n_nodeTags) # Get the indices
+        indices = indices.reshape(-1,2) #re-dimension to 2darray of shape (576*n_quad,2)
+        K= sparse.BCOO((data,indices),shape=(ndof,ndof))
+        return K
