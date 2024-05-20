@@ -12,7 +12,7 @@ There are multiple choices for solving linear system Ax=b from Jax.
     1. jax.experimental.sparse.linalg.spsolve
         It is sparse-direct solver, not iterative.
         However, it is still under developement so it does not support all functionalities (such as AD)
-    2.  jax.scipy.sparse.linalg.bicgstab/cg/gmres
+    2.  TODO: jax.scipy.sparse.linalg.bicgstab/cg/gmres
         It is sparse-iterative solver. Performance needs tuning parameters.
         It is fully developed by Jax.
         Used by Jax-FEM: https://github.com/tianjuxue/jax-am/blob/main/jax_am/fem/solver.py
@@ -121,7 +121,7 @@ def jax_sparse_solve(K_aug, f_aug):
         1darray of the discplacement vector corresponding to the dofs of the system, augmented.
     '''
     K_aug_bcsr = sparse.BCSR.from_bcoo(K_aug) #Convert to BCSR
-    #K_aug_csr = scipy_csr_matrix((K_aug_bcsr.data, K_aug_bcsr.indices, K_aug_bcsr.indptr),shape = K_aug_bcsr.shape)
+    #K_aug_csr = scipy_csr_matrix((K_aug_bcsr.data, K_aug_bcsr.indices, K_aug_bcsr.indptr),shape = K_aug_bcsr.shape) #Conversion error
     return sparse.linalg.spsolve(K_aug_bcsr.data,K_aug_bcsr.indices,K_aug_bcsr.indptr,f_aug)
 
 
@@ -201,9 +201,9 @@ def sci_sparse_solve(K_aug, f_aug):
     K_aug_ncol = K_aug_bcsr.shape[1] #Number of columns
     u = jax.pure_callback(callback,  # callback function
                            f_aug,  # return type
-                           np.array(K_aug_bcsr.data), 
-                           np.array(K_aug_bcsr.indices,dtype='int32'),
-                           np.array(K_aug_bcsr.indptr,dtype='int32'),
+                           K_aug_bcsr.data,#np.array(K_aug_bcsr.data), 
+                           K_aug_bcsr.indices,#np.array(K_aug_bcsr.indices,dtype='int32'),
+                           K_aug_bcsr.indptr,#np.array(K_aug_bcsr.indptr,dtype='int32'),
                            K_aug_nrow,
                            K_aug_ncol,
                            f_aug)

@@ -7,7 +7,7 @@ Available optimizers:
 
 
 import numpy as np
-import nlopt
+#import nlopt
 
 class Optimization():
     """

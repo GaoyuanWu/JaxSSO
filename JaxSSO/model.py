@@ -238,12 +238,12 @@ class Model():
         #Beamcols
         self.n_beamcol = len(self.beamcols)
         self.cnct_beamcols = self.get_cnct_beamcols()
-        self.prop_beamcols = self.get_beamcols_cross_prop()
+        self.prop_beamcols = jnp.array(self.get_beamcols_cross_prop())
 
         #Quads
         self.n_quad = len(self.quads)
         self.cnct_quads = self.get_cnct_quads()
-        self.prop_quads = self.get_quads_cross_prop()        
+        self.prop_quads = jnp.array(self.get_quads_cross_prop())        
 
     def get_node_crds(self):
         '''
@@ -337,6 +337,24 @@ class Model():
         ky_mods = np.array([[qd.ky_mod for qd in self.quads.values()]])
         return np.vstack((ts, Es, nus, kx_mods, ky_mods)).T
     
+    def select_solver(self,which_solver,enforce_scipy_sparse):
+        '''
+        Determine which solver to use
+        '''
+        if which_solver == 'dense':
+            return solver.jax_dense_solve
+        elif which_solver == 'sparse':
+            if enforce_scipy_sparse:
+                return solver.sci_sparse_solve
+            else:
+                if jax.default_backend() == 'gpu':
+                    return solver.jax_sparse_solve
+                elif jax.default_backend() == 'cpu':
+                    print("Cannot use JAX's sparse solver because it only supports GPU at the moment")
+                    return solver.sci_sparse_solve
+        else:
+            print("Please select the right solver: dense or sparse")
+
     def solve(self,which_solver='sparse',enforce_scipy_sparse = True):
         '''
         Solve the linear system to obtain the displacement vector.
@@ -354,18 +372,9 @@ class Model():
         K_aug = assemblemodel.model_K_aug(self) #LHS
         f_aug = assemblemodel.model_f_aug(self) #RHS
         ndof = self.get_dofs() #number of dofs in the system
-        if which_solver == 'dense':
-            self.u = solver.jax_dense_solve(K_aug,f_aug)[:ndof]
-        elif which_solver == 'sparse':
-            if enforce_scipy_sparse:
-                self.u = solver.sci_sparse_solve(K_aug,f_aug)[:ndof]
-            else:
-                if jax.default_backend() == 'gpu':
-                    self.u = solver.jax_sparse_solve(K_aug,f_aug)[:ndof]
-                elif jax.default_backend() == 'cpu':
-                    self.u = solver.sci_sparse_solve(K_aug,f_aug)[:ndof]
-        else:
-            print("Please select the right solver: dense or sparse")
+        solver_fea = self.select_solver(which_solver,enforce_scipy_sparse)
+        self.u = solver_fea(K_aug,f_aug)[:ndof]
+    
 
     def strain_energy(self):
         if self.u != None:
