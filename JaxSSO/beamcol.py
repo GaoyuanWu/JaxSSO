@@ -12,7 +12,7 @@ References
 import jax.numpy as jnp
 import numpy as np
 from functools import partial
-from jax import  jit,vmap
+from jax import  jit,vmap,jacfwd,custom_jvp
 from jax.experimental import sparse
 import jax
 jax.config.update("jax_enable_x64", True)
@@ -269,4 +269,90 @@ class BeamCol():
         indices = vmap(BeamCol.element_K_beamcol_indices)(i_nodeTags,j_nodeTags) # Get the indices
         indices = indices.reshape(-1,2) #re-dimension to 2darray of shape (144*n_beamcol,2)
         K= sparse.BCOO((data,indices),shape=(ndof,ndof))
+        return K.todense()
+    
+    
+    #@partial(jit,static_argnums=(3,4))
+    @staticmethod
+    def K_beamcol_jvp(node_crds,prop,cnct,ndof,n_bc):
+        '''
+        Return the global stiffness contribution of beam-columns in JAX's sparse BCOO format.
+        Forward mode jvp.
+        This is the customized JVP version, i.e., not naively implementing the AD feature but rather taking advantage of the sparsity
+
+        Parameters:
+        ----------
+        node_crds:
+            ndarray storing nodal coordinates, shape of (n_node,3)
+
+        prop:
+            ndarray storing all sectional properties, shape 0 is n_beamcol
+
+        cnct:
+            ndarray storing the connectivity matrix, shape of (n_beamcol,2)
+        
+        ndof:
+            number of dof in the system, int
+        
+        n_bc:
+            number of beamcol in the system, int
+        
+        Returns:
+        ------
+        K:
+            jax.experimental.sparse.BCOO matrix
+        '''
+        # 1D array of sectional properties
+        Es = prop[:,0] # Young's modulus
+        Gs = prop[:,1] # Shear modulus
+        Iys = prop[:,2] # Moment of inertia
+        Izs = prop[:,3] # Moment of inertia
+        Js = prop[:,4] # Polar moment of inertia
+        As = prop[:,5] # Sectional area
+
+        # Connectivity matrix
+        i_nodeTags = cnct[:,0] # i-node tags
+        j_nodeTags = cnct[:,1] # j-node tags
+
+        # Convert nodal coordinates to beamcol coordinates
+        i_crds = node_crds[i_nodeTags,:] #shape of (n_beamcol,3)
+        j_crds = node_crds[j_nodeTags,:] #shape of (n_beamcol,3)
+        e_crds = jnp.hstack((i_crds,j_crds)) #shape of (n_beamcol,6)
+
+        data = jnp.ravel(vmap(BeamCol.element_K_beamcol)(e_crds,Es,Gs,Iys,Izs,Js,As))  #Get the stiffness values, raveled
+        data = data.reshape(-1) # re-dimension the data to 1darray (144*n_beamcol,)
+        indices = vmap(BeamCol.element_K_beamcol_indices)(i_nodeTags,j_nodeTags) # Get the indices
+        indices = indices.reshape(-1,2) #re-dimension to 2darray of shape (144*n_beamcol,2)
+        K= sparse.BCOO((data,indices),shape=(ndof,ndof))
+        K = K.sort_indices()
+        K = K.sum_duplicates(nse=144*n_bc)
         return K
+    
+    @staticmethod
+    def dK_dcrds_indices(i_nodeTag,j_nodeTag):
+        '''
+        Return the indices of dk/dcrds for each element for BCOO sparse matrix.
+        Will be vmapped later.
+        '''
+        K_indices = BeamCol.element_K_beamcol_indices(i_nodeTag,j_nodeTag) # Shape of (144,2), each row contains row & col info in the K matrix
+        expand_K_indices = jnp.repeat(K_indices,6,axis=0) #expand the indices array for 6 coordinates of each element, shape of (864,2)
+        node_indices = jnp.hstack((jnp.repeat(i_nodeTag,3),jnp.repeat(j_nodeTag,3))) #Shape of (6,), tags for nodal coordinates
+        xyz_id = jnp.hstack((jnp.linspace(0,2,3,dtype='int32'),jnp.linspace(0,2,3,dtype='int32'))) #Shape of (6,), xyz identifier
+        params_indices = jnp.vstack((jnp.tile(node_indices,144).T,jnp.tile(xyz_id,144).T)).T #shape of (864,2), indices for the dk_dcrds parameters
+        return jnp.hstack((expand_K_indices,params_indices)) #shape of (864,4)
+
+    @staticmethod
+    def dK_dprop_indices(ele_i,i_nodeTag,j_nodeTag):
+        '''
+        Return the indices of dk/dprops for each element for BCOO sparse matrix.
+        Will be vmapped later.
+        '''
+        K_indices = BeamCol.element_K_beamcol_indices(i_nodeTag,j_nodeTag) # Shape of (144,2), each row contains row & col info in the K matrix
+        expand_K_indices = jnp.repeat(K_indices,6,axis=0) #expand the indices array for 6 coordinates of each element, shape of (864,2)
+        ele_indices = jnp.repeat(ele_i,6) #Shape of (6,), tags for element
+        prop_id = jnp.linspace(0,5,6,dtype='int32') #Shape of (6,), property identifier
+        params_indices = jnp.vstack((jnp.tile(ele_indices,144).T,jnp.tile(prop_id,144).T)).T #shape of (864,2), indices for the dk_dcrds parameters
+        return jnp.hstack((expand_K_indices,params_indices)) #shape of (864,4)
+
+
+    

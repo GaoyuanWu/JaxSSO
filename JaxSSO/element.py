@@ -15,7 +15,7 @@ References
 import jax.numpy as jnp
 import numpy as np
 from functools import partial
-from jax import  jit,vmap
+from jax import  jit,vmap,jacfwd
 from jax.experimental import sparse
 import jax
 jax.config.update("jax_enable_x64", True)
@@ -147,7 +147,7 @@ class BeamCol():
         rows,cols = jnp.meshgrid(indices_dof,indices_dof,indexing='ij')#rows and columns
         indices = jnp.vstack((rows.ravel(),cols.ravel())).T #indices in global stiffness matrix
         return indices
-
+    
 
     #--------------------------------------------
     # The following methods are 'vmapped' (vectorized)
@@ -273,7 +273,191 @@ class BeamCol():
         indices = indices.reshape(-1,2) #re-dimension to 2darray of shape (144*n_beamcol,2)
         K= sparse.BCOO((data,indices),shape=(ndof,ndof))
         return K
+    
+    
+    
+    @staticmethod
+    @partial(jit,static_argnums=(3,4))
+    def K_beamcol_vjp(node_crds,prop,cnct,ndof,n_bc):
+        '''
+        Return the global stiffness contribution of beam-columns in JAX's sparse BCOO format.
+        This is the customized VJP version, i.e., not naively implementing the AD feature but rather taking advantage of the sparsity
 
+        Parameters:
+        ----------
+        node_crds:
+            ndarray storing nodal coordinates, shape of (n_node,3)
+
+        prop:
+            ndarray storing all sectional properties, shape 0 is n_beamcol
+
+        cnct:
+            ndarray storing the connectivity matrix, shape of (n_beamcol,2)
+        
+        ndof:
+            number of dof in the system, int
+        
+        n_bc:
+            number of beamcol in the system, int
+        
+        Returns:
+        ------
+        K:
+            jax.experimental.sparse.BCOO matrix
+        '''
+        # 1D array of sectional properties
+        Es = prop[:,0] # Young's modulus
+        Gs = prop[:,1] # Shear modulus
+        Iys = prop[:,2] # Moment of inertia
+        Izs = prop[:,3] # Moment of inertia
+        Js = prop[:,4] # Polar moment of inertia
+        As = prop[:,5] # Sectional area
+
+        # Connectivity matrix
+        i_nodeTags = cnct[:,0] # i-node tags
+        j_nodeTags = cnct[:,1] # j-node tags
+
+        # Convert nodal coordinates to beamcol coordinates
+        i_crds = node_crds[i_nodeTags,:] #shape of (n_beamcol,3)
+        j_crds = node_crds[j_nodeTags,:] #shape of (n_beamcol,3)
+        e_crds = jnp.hstack((i_crds,j_crds)) #shape of (n_beamcol,6)
+
+        data = jnp.ravel(vmap(BeamCol.element_K_beamcol)(e_crds,Es,Gs,Iys,Izs,Js,As))  #Get the stiffness values, raveled
+        data = data.reshape(-1) # re-dimension the data to 1darray (144*n_beamcol,)
+        indices = vmap(BeamCol.element_K_beamcol_indices)(i_nodeTags,j_nodeTags) # Get the indices
+        indices = indices.reshape(-1,2) #re-dimension to 2darray of shape (144*n_beamcol,2)
+        K= sparse.BCOO((data,indices),shape=(ndof,ndof))
+        return K
+    
+    @staticmethod
+    def dK_dcrds_indices(i_nodeTag,j_nodeTag):
+        '''
+        Return the indices of dk/dcrds for each element for BCOO sparse matrix.
+        Will be vmapped later.
+        '''
+        K_indices = BeamCol.element_K_beamcol_indices(i_nodeTag,j_nodeTag) # Shape of (144,2), each row contains row & col info in the K matrix
+        expand_K_indices = jnp.repeat(K_indices,6,axis=0) #expand the indices array for 6 coordinates of each element, shape of (864,2)
+        node_indices = jnp.hstack((jnp.repeat(i_nodeTag,3),jnp.repeat(j_nodeTag,3))) #Shape of (6,), tags for nodal coordinates
+        xyz_id = jnp.hstack((jnp.linspace(0,2,3,dtype='int32'),jnp.linspace(0,2,3,dtype='int32'))) #Shape of (6,), xyz identifier
+        params_indices = jnp.vstack((jnp.tile(node_indices,144).T,jnp.tile(xyz_id,144).T)).T #shape of (864,2), indices for the dk_dcrds parameters
+        return jnp.hstack((expand_K_indices,params_indices)) #shape of (864,4)
+
+    @staticmethod
+    def dK_dprop_indices(ele_i,i_nodeTag,j_nodeTag):
+        '''
+        Return the indices of dk/dprops for each element for BCOO sparse matrix.
+        Will be vmapped later.
+        '''
+        K_indices = BeamCol.element_K_beamcol_indices(i_nodeTag,j_nodeTag) # Shape of (144,2), each row contains row & col info in the K matrix
+        expand_K_indices = jnp.repeat(K_indices,6,axis=0) #expand the indices array for 6 coordinates of each element, shape of (864,2)
+        ele_indices = jnp.repeat(ele_i,6) #Shape of (6,), tags for element
+        prop_id = jnp.linspace(0,5,6,dtype='int32') #Shape of (6,), property identifier
+        params_indices = jnp.vstack((jnp.tile(ele_indices,144).T,jnp.tile(prop_id,144).T)).T #shape of (864,2), indices for the dk_dcrds parameters
+        return jnp.hstack((expand_K_indices,params_indices)) #shape of (864,4)
+
+    @staticmethod
+    def K_beamcol_vjp_fwd(node_crds,prop,cnct,ndof,n_bc):
+        '''
+        Forward pass of the global stiffness contribution of beam-columns in JAX's sparse BCOO format.
+        This is the customized VJP version, i.e., not naively implementing the AD feature but rather taking advantage of the sparsity.
+        
+
+        Parameters:
+        ----------
+        node_crds:
+            ndarray storing nodal coordinates, shape of (n_node,3)
+
+        prop:
+            ndarray storing all sectional properties, shape 0 is n_beamcol
+
+        cnct:
+            ndarray storing the connectivity matrix, shape of (n_beamcol,2)
+        
+        ndof:
+            number of dof in the system, int
+        
+        n_bc:
+            number of beamcol in the system, int
+        
+        Returns:
+        ------
+        K:
+            jax.experimental.sparse.BCOO matrix
+        '''
+        K = BeamCol.K_beamcol_vjp(node_crds,prop,cnct,ndof,n_bc) #Forward primal call
+        
+        # 1D array of sectional properties
+        Es = prop[:,0] # Young's modulus
+        Gs = prop[:,1] # Shear modulus
+        Iys = prop[:,2] # Moment of inertia
+        Izs = prop[:,3] # Moment of inertia
+        Js = prop[:,4] # Polar moment of inertia
+        As = prop[:,5] # Sectional area
+
+        # Connectivity matrix
+        i_nodeTags = cnct[:,0] # i-node tags
+        j_nodeTags = cnct[:,1] # j-node tags
+
+        # Convert nodal coordinates to beamcol coordinates
+        i_crds = node_crds[i_nodeTags,:] #shape of (n_beamcol,3)
+        j_crds = node_crds[j_nodeTags,:] #shape of (n_beamcol,3)
+        e_crds = jnp.hstack((i_crds,j_crds)) #shape of (n_beamcol,6)
+
+
+        d_eleK_d_ele = jacfwd(BeamCol.element_K_beamcol,argnums=(0,1,2,3,4,5,6)) #function, take jacobian of elemental stiffness matrix
+        vmap_d_eleK_d_ele = vmap(d_eleK_d_ele) #vmapped
+
+        dK_e_crds,dK_Es,dK_Gs,dK_Iys,dK_Izs,dK_Js,dK_As = vmap_d_eleK_d_ele(e_crds,Es,Gs,Iys,Izs,Js,As)  #Tuple of 7, each element of tuple is shape of (n_beamcol,12,12,6) for e_crds or (n_beamcol,12,12)
+        
+
+        #Transforming data from dK_e_crds into a BCOO matrix
+        dcrds_indices = vmap(BeamCol.dK_dcrds_indices)(i_nodeTags,j_nodeTags) #shape(n_beamcol,864,4), the indices of where the contribution to K is from
+        dK_e_crds = (dK_e_crds.reshape(-1,864)).reshape(-1,order='F')  #data for BCOO
+        dcrds_indices = dcrds_indices.reshape(-1,4,order='F') #indices for BCOO
+        dK_d_node_crds = sparse.BCOO((dK_e_crds,dcrds_indices),shape=(ndof,ndof,int(ndof/6),3)) #derivatives of K wrt nodal coordinates
+
+        #Trnsforming all the other data into a BCOO matrix for Prop
+        dK_prop = jnp.stack((dK_Es,dK_Gs,dK_Iys,dK_Izs,dK_Js,dK_As),axis=3) #shape of (n_beamcol,12,12,6),stack the data
+        dK_prop = (dK_prop.reshape(-1,864)).reshape(-1,order='F') #data for BCOO
+        dprop_indices = vmap(BeamCol.dK_dprop_indices)(jnp.linspace(0,n_bc-1,n_bc,dtype='int32'),i_nodeTags,j_nodeTags) #shape(n_beamcol,864,4), the indices of where the contribution to K is from
+        dprop_indices = dprop_indices.reshape(-1,4,order='F') #indices for BCOO
+        
+        dK_d_prop = sparse.BCOO((dK_prop,dprop_indices),shape=(ndof,ndof,n_bc,6)) #derivatives of K wrt element properties
+
+
+        return K,(dK_d_node_crds,dK_d_prop)
+
+    @staticmethod
+    def K_beamcol_vjp_bwd(res,g):
+        '''
+        Backward pass of the global stiffness contribution of beam-columns in JAX's sparse BCOO format.
+        This is the customized VJP version, i.e., not naively implementing the AD feature but rather taking advantage of the sparsity.
+        Backward pass.
+
+        Parameters:
+        ----------
+        node_crds:
+            ndarray storing nodal coordinates, shape of (n_node,3)
+
+        prop:
+            ndarray storing all sectional properties, shape 0 is n_beamcol
+
+        cnct:
+            ndarray storing the connectivity matrix, shape of (n_beamcol,2)
+        
+        ndof:
+            number of dof in the system, int
+        
+        Returns:
+        ------
+        K:
+            jax.experimental.sparse.BCOO matrix
+        '''
+        dK_d_node_crds,dK_d_prop = res
+        return (dK_d_node_crds*g,dK_d_prop*g)
+    
+    K_beamcol_vjp = jax.custom_vjp(K_beamcol_vjp,nondiff_argnums=(2,3,4))
+    K_beamcol_vjp.defvjp(K_beamcol_vjp_fwd, K_beamcol_vjp_bwd) #Register vjp for backward mode AD
 #%%
 class Truss():
     '''

@@ -6,16 +6,107 @@ import numpy as np
 import jax.numpy as jnp
 from .beamcol import BeamCol
 from .quad import Quad
-from jax import vmap,jit
+from jax import vmap,jit,custom_jvp,jacfwd
 from jax.experimental import sparse
 import jax
 jax.config.update("jax_enable_x64", True)
 from functools import partial
+
+#%%
+#---------------------------------------------------------------------
+# Helper functions: customize sparse derivatives of K
+#---------------------------------------------------------------------
+
+# Customize jvp for functions
+K_beamcol_cus = custom_jvp(BeamCol.K_beamcol_jvp,nondiff_argnums=(2,3,4)) #customized jvp 
+
+@K_beamcol_cus.defjvp
+def K_beamcol_jvp_fwd(cnct,ndof,n_bc,primals,tangents):
+    '''
+    Forward pass of the global stiffness contribution of beam-columns in JAX's sparse BCOO format.
+    This is the customized VJP version, i.e., not naively implementing the AD feature but rather taking advantage of the sparsity.
+    
+
+    Parameters:
+    ----------
+    node_crds:
+        ndarray storing nodal coordinates, shape of (n_node,3)
+
+    prop:
+        ndarray storing all sectional properties, shape 0 is n_beamcol
+
+    cnct:
+        ndarray storing the connectivity matrix, shape of (n_beamcol,2)
+    
+    ndof:
+        number of dof in the system, int
+    
+    n_bc:
+        number of beamcol in the system, int
+    
+    Returns:
+    ------
+    K:
+        jax.experimental.sparse.BCOO matrix
+    '''
+    node_crds,prop = primals
+    node_crds_dot,prop_dot= tangents
+    primal_out = K_beamcol_cus(node_crds,prop,cnct,ndof,n_bc) #Forward primal call
+    
+    # 1D array of sectional properties
+    Es = prop[:,0] # Young's modulus
+    Gs = prop[:,1] # Shear modulus
+    Iys = prop[:,2] # Moment of inertia
+    Izs = prop[:,3] # Moment of inertia
+    Js = prop[:,4] # Polar moment of inertia
+    As = prop[:,5] # Sectional area
+
+    # Connectivity matrix
+    i_nodeTags = cnct[:,0] # i-node tags
+    j_nodeTags = cnct[:,1] # j-node tags
+
+    # Convert nodal coordinates to beamcol coordinates
+    i_crds = node_crds[i_nodeTags,:] #shape of (n_beamcol,3)
+    j_crds = node_crds[j_nodeTags,:] #shape of (n_beamcol,3)
+    e_crds = jnp.hstack((i_crds,j_crds)) #shape of (n_beamcol,6)
+
+
+    d_eleK_d_ele = jacfwd(BeamCol.element_K_beamcol,argnums=(0,1,2,3,4,5,6)) #function, take jacobian of elemental stiffness matrix
+    vmap_d_eleK_d_ele = vmap(d_eleK_d_ele) #vmapped
+
+    dK_e_crds,dK_Es,dK_Gs,dK_Iys,dK_Izs,dK_Js,dK_As = vmap_d_eleK_d_ele(e_crds,Es,Gs,Iys,Izs,Js,As)  #Tuple of 7, each element of tuple is shape of (n_beamcol,12,12,6) for e_crds or (n_beamcol,12,12)
+    
+
+    #Transforming data from dK_e_crds into a BCOO matrix
+    dcrds_indices = vmap(BeamCol.dK_dcrds_indices)(i_nodeTags,j_nodeTags) #shape(n_beamcol,864,4), the indices of where the contribution to K is from
+    dK_e_crds = (dK_e_crds.reshape(-1,864)).reshape(-1,order='F')  #data for BCOO
+    dcrds_indices = dcrds_indices.reshape(-1,4,order='F') #indices for BCOO
+    dK_d_node_crds = sparse.BCOO((dK_e_crds,dcrds_indices),shape=(ndof,ndof,int(ndof/6),3)) #derivatives of K wrt nodal coordinates
+
+    #Trnsforming all the other data into a BCOO matrix for Prop
+    dK_prop = jnp.stack((dK_Es,dK_Gs,dK_Iys,dK_Izs,dK_Js,dK_As),axis=3) #shape of (n_beamcol,12,12,6),stack the data
+    dK_prop = (dK_prop.reshape(-1,864)).reshape(-1,order='F') #data for BCOO
+    dprop_indices = vmap(BeamCol.dK_dprop_indices)(jnp.linspace(0,n_bc-1,n_bc,dtype='int32'),i_nodeTags,j_nodeTags) #shape(n_beamcol,864,4), the indices of where the contribution to K is from
+    dprop_indices = dprop_indices.reshape(-1,4,order='F') #indices for BCOO
+    
+    dK_d_prop = sparse.BCOO((dK_prop,dprop_indices),shape=(ndof,ndof,n_bc,6)) #derivatives of K wrt element properties
+
+    #jvp for all
+    dK_d_node_crds = dK_d_node_crds.reshape(ndof,ndof,3*int(ndof/6))#reshape
+    dK_d_prop = dK_d_prop.reshape(ndof,ndof,n_bc*6)#reshape
+    node_crds_dot = node_crds_dot.reshape(3*int(ndof/6))#reshape
+    prop_dot = prop_dot.reshape(n_bc*6)#reshape
+
+    tangent_out = dK_d_node_crds@node_crds_dot +  dK_d_prop@prop_dot
+    primal_out = primal_out.sort_indices()
+    primal_out = primal_out.sum_duplicates(nse=144*n_bc)
+    return primal_out, sparse.BCOO.fromdense(tangent_out,nse=144*n_bc)#TODO:AttributeError: 'UndefinedPrimal' object has no attribute 'ndim'
+
+
 #%%
 #---------------------------------------------------------------------
 # Helper functions: stiffness matrix
 #---------------------------------------------------------------------
-
 @partial(jit,static_argnums=(2,3,4))
 def K_aug(known_dofs,K_BCOO,ndof,ncons,k_nse):
     '''
@@ -113,7 +204,8 @@ def K_func(node_crds,ndof,n_beamcol,cnct_beamcols,prop_beamcols,n_quad,cnct_quad
 
     #Go over different element types
     if n_beamcol>0:
-        K = K + BeamCol.K_beamcol(node_crds,prop_beamcols,cnct_beamcols,ndof)
+        #K = K + BeamCol.K_beamcol(node_crds,prop_beamcols,cnct_beamcols,ndof)
+        K = K + K_beamcol_cus(node_crds,prop_beamcols,cnct_beamcols,ndof,n_beamcol)
     if n_quad>0:
         K = K + Quad.K_quad(node_crds,prop_quads,cnct_quads,ndof)
     
