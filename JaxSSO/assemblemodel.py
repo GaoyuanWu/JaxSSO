@@ -14,6 +14,8 @@ from functools import partial
 #%%
 #---------------------------------------------------------------------
 # Helper functions: customize sparse derivatives of K
+# This is still work in progress, intending to speed up gradient evaluation: smartly conduct AD instead of "naively".
+# TODO
 #---------------------------------------------------------------------
 
 # Customize jvp for functions
