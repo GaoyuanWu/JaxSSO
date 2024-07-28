@@ -4,8 +4,7 @@ This modules take 'model' object as input and assemble the linear system Ax=b(Ku
 #%%
 import numpy as np
 import jax.numpy as jnp
-from .beamcol import BeamCol
-from .quad import Quad
+from .element import BeamCol,Quad
 from jax import vmap,jit,custom_jvp,jacfwd
 from jax.experimental import sparse
 import jax
@@ -204,8 +203,8 @@ def K_func(node_crds,ndof,n_beamcol,cnct_beamcols,prop_beamcols,n_quad,cnct_quad
 
     #Go over different element types
     if n_beamcol>0:
-        #K = K + BeamCol.K_beamcol(node_crds,prop_beamcols,cnct_beamcols,ndof)
-        K = K + K_beamcol_cus(node_crds,prop_beamcols,cnct_beamcols,ndof,n_beamcol)
+        K = K + BeamCol.K_beamcol(node_crds,prop_beamcols,cnct_beamcols,ndof)
+        #K = K + K_beamcol_cus(node_crds,prop_beamcols,cnct_beamcols,ndof,n_beamcol), this is still TODO.
     if n_quad>0:
         K = K + Quad.K_quad(node_crds,prop_quads,cnct_quads,ndof)
     
