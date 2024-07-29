@@ -13,3 +13,14 @@ This method calculates the gradient of strain energy directly, given the displac
 
 ## 0.0.6
 Separate FEA analysis module and Sensitivity analysis model.
+
+## 1.0.0
+Major update.
+Support beams and quadrilateral shell elements based on MITC-4 shell.
+Support shape, size, topology optimization.
+Include five examples:
+* Shape optimization of gridshell
+* Shape optimization of continuous shell
+* Size optimization of continuous shell
+* Two examples of simultaneous shape and topology optimization
+* Integration with Neural Networks for structural optimization
