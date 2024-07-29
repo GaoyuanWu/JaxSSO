@@ -5,7 +5,7 @@ Developed by [Gaoyuan Wu](https://gaoyuanwu.github.io/) @ Princeton.
 
 ## Features
 * Automatic differentiation (AD): an easy and accurate way for gradient evaluation. The implementation of AD avoids deriving derivatives manually or trauncation errors from numerical differentiation.
-* Acclerated linear algebra (XLA) and just-in-time compilation: these features in JAX boost the gradient evaluation
+* Acclerated linear algSebra (XLA) and just-in-time compilation: these features in JAX boost the gradient evaluation
 * Hardware acceleration: run on GPUs and TPUs for **faster** experience
 * Support beam-column elements and MITC-4 quadrilateral shell elements
 * Shape optimization, size optimization and topology optimization
