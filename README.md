@@ -51,9 +51,9 @@ The project provides you with interactive examples with Google Colab for quick s
 ### Cite us
 Please star, share our project with others and/or cite us if you find our work interesting and helpful.
 
-The details of our current work are under review.
+We have a new manuscript under review.
 
-Our previous work can be seen in this [paper](https://link.springer.com/article/10.1007/s00158-023-03601-0) in [Structural and Multidisciplinary Optimization](https://www.springer.com/journal/158).
+Our previous work can be seen in this [paper](https://link.springer.com/article/10.1007/s00158-023-03601-0).
 Cite our previous work using:
 ```bibtex
 @article{wu_framework_2023,
