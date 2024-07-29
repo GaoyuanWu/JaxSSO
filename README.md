@@ -48,7 +48,7 @@ The project provides you with interactive examples with Google Colab for quick s
 ![alt text](data/images/Gridshell.png)
 
 
-### Cite us
+## Cite us
 Please star, share our project with others and/or cite us if you find our work interesting and helpful.
 
 We have a new manuscript under review.
