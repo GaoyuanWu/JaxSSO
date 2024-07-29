@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="JaxSSO",
-    version="0.0.6",
+    version="1.0.0",
     author="Gaoyuan Wu",
     author_email="gaoyuanw@princeton.edu",
     description="A framework for structural shape optimization based on automatic differentiation (AD) and the adjoint method, enabled by JAX",
@@ -13,7 +13,7 @@ setuptools.setup(
     long_description_content_type="text/markdown",
     url="https://github.com/GaoyuanWu/JaxSSO",
     packages=setuptools.find_packages(include=['JaxSSO']),
-    keywords=["jax", "automatic-differentiation", "shape optimization", "form-finding", "structural optimization"],
+    keywords=["jax", "automatic differentiation", "shape optimization", "finite element analysis", "form finding", "topology optimization", "structural optimization"],
     classifiers=[
         "License :: OSI Approved :: MIT License",
         "Programming Language :: Python :: 3",
@@ -22,11 +22,12 @@ setuptools.setup(
         "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3.11",
+        "Programming Language :: Python :: 3.12",
     ],
     install_requires=[
         'numpy>=1.22.0',
         'matplotlib',
-        'jax',
+        'jax>=0.4.24',
         'scipy'
     ],
     include_package_data = True,
