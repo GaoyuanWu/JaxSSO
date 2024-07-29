@@ -26,7 +26,7 @@ JaxSSO is written in Python and requires:
 Optional:
 * [Nlopt](https://nlopt.readthedocs.io/en/latest/): Nlopt is a library for nonlinear optimization. It has Python interface, which is implemented herein. Refer to [this link](https://nlopt.readthedocs.io/en/latest/NLopt_Installation/) for the installation of Nlopt. Alternatively, you can use `pip install nlopt`, please refer to [
 nlopt-python](https://pypi.org/project/nlopt/).
-* [Flax](https://optax.readthedocs.io/en/latest/): neural network library based on JAX. JAX can be integrated with `flax`, please see `Examples/Neural_Network_Topo_Shape.ipynb`
+* [Flax](https://flax.readthedocs.io/en/latest/): neural network library based on JAX. JAXSSO can be integrated with `flax`, please see `Examples/Neural_Network_Topo_Shape.ipynb`
 * [Optax](https://optax.readthedocs.io/en/latest/): optimization library based on JAX, can be used to train neural networks.
 
 
