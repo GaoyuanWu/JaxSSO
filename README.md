@@ -62,21 +62,15 @@ We have a new [manuscript](https://arxiv.org/abs/2407.20026) under review.
 Our previous work can be seen in this [paper](https://link.springer.com/article/10.1007/s00158-023-03601-0).
 Cite our previous work using:
 ```bibtex
-@article{wu_framework_2023,
-	title = {A framework for structural shape optimization based on automatic differentiation, the adjoint method and accelerated linear algebra},
-	volume = {66},
-	issn = {1615-1488},
-	url = {https://doi.org/10.1007/s00158-023-03601-0},
-	doi = {10.1007/s00158-023-03601-0},
-	language = {en},
-	number = {7},
-	urldate = {2023-06-21},
-	journal = {Structural and Multidisciplinary Optimization},
-	author = {Wu, Gaoyuan},
-	month = jun,
-	year = {2023},
-	keywords = {Adjoint method, Automatic differentiation, Bézier surface, Form finding, JAX, Shape optimization, Shell structure},
-	pages = {151},
+@article{wu2023framework,
+  title={A framework for structural shape optimization based on automatic differentiation, the adjoint method and accelerated linear algebra},
+  author={Wu, Gaoyuan},
+  journal={Structural and Multidisciplinary Optimization},
+  volume={66},
+  url = {https://doi.org/10.1007/s00158-023-03601-0},
+  doi = {10.1007/s00158-023-03601-0},
+  pages={151},
+  year={2023},
+  publisher={Springer}
 }
-
 ```
