@@ -24,3 +24,9 @@ Include five examples:
 * Size optimization of continuous shell
 * Two examples of simultaneous shape and topology optimization
 * Integration with Neural Networks for structural optimization
+Tested with:
+* python 3.11.6
+* jax 0.4.14
+* nlopt 2.7.1
+* numpy 1.26.4
+* cuda/cudatoolkit 11.8.0
