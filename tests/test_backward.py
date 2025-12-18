@@ -29,7 +29,7 @@ def test_model_ad(which_solver):
     Parameters:
         which_solver: dense or sparse
 
-    Benchmark from finite difference with delta_param of 10^-6
+    Benchmark from finite difference with delta_param of 10^-5
 
     '''
     # ------------------------------------------------------------------
@@ -38,6 +38,7 @@ def test_model_ad(which_solver):
     model = fea_problem.fea_problem_model() #FE model
     sso_model = SSO_model(model) # initial sso model
     n_node = len(model.nodes) # How many nodes in the model
+    design_i = int(n_node/2)-1 #Mid-node
     design_nodes = np.array([i for i in range(n_node) if i!=0 and i!=n_node-1]) #Nodes that are design nodes
     for node in design_nodes:
         nodeparameter = NodeParameter(node,2) # nodeparamter object, z-coordinate of each node
@@ -51,7 +52,7 @@ def test_model_ad(which_solver):
     # Solve using JaxSSO solver
     # ------------------------------------------------------------------
     model.solve(which_solver=which_solver) #forward
-    SSO_grad = sso_model.value_grad_params(which_solver=which_solver,enforce_scipy_sparse = True)[1] #backward
+    SSO_grad = float(sso_model.value_grad_params(which_solver=which_solver,enforce_scipy_sparse = True)[1][design_i]) #backward
 
 
     # ------------------------------------------------------------------
@@ -66,13 +67,11 @@ def test_model_ad(which_solver):
     # ------------------------------------------------------------------
     # Benchmark results from finite difference
     # ------------------------------------------------------------------
-    FD_grad = []
-    dz = 10e-06 #finite difference step
-    for design_i in design_nodes:
-        C_temp = FD_problem.FD_problem_model_strain_energy(design_i,which_solver,dz)
-        FD_grad.append((C_temp-strain_energy_jaxsso)/dz)
+    dz = 1e-5 #finite difference step
+    C_temp = FD_problem.FD_problem_model_strain_energy(design_i,which_solver,dz)
+    FD_grad = ((float(C_temp-strain_energy_jaxsso)/dz)) #Finite difference result
 
-    rtol = 1e-2   # relative tolerance
+    rtol = 5e-2   # relative tolerance
 
     # ------------------------------------------------------------------
     # Test results

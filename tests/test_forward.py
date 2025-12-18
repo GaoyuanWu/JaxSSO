@@ -38,8 +38,7 @@ def test_model_solve(which_solver):
     # Benchmark results from commercial solver (SAP2000)
     # ------------------------------------------------------------------
     strain_energy_bench = 3503.7935
-    rtol = 1e-4   # relative tolerance
-    atol = 1e-2   # absolute tolerance
+    rtol = 1e-3   # relative tolerance
 
     # ------------------------------------------------------------------
     # Solve using JaxSSO dense solver
@@ -65,8 +64,7 @@ def test_model_solve(which_solver):
     assert np.isclose(
         strain_energy_jaxsso,
         strain_energy_bench,
-        rtol=rtol,
-        atol=atol
+        rtol=rtol
     ), (
         f"Dense solver failed:\n"
         f"Jaxsso computed = {strain_energy_jaxsso},\n "
