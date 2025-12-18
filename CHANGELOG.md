@@ -14,7 +14,7 @@ This method calculates the gradient of strain energy directly, given the displac
 ## 0.0.6
 Separate FEA analysis module and Sensitivity analysis model.
 
-## 1.0.0
+## 1.0.1
 Major update.
 Support beams and quadrilateral shell elements based on MITC-4 shell.
 Support shape, size, topology optimization.
@@ -26,8 +26,11 @@ Include five examples:
 * Integration with Neural Networks for structural optimization
 
 Tested with:
-* python 3.11.6
-* jax 0.4.14
+* python 3.12.12
+* jax 0.7.2
+* trimesh 3.14.1
 * nlopt 2.7.1
-* numpy 1.26.4
+* numpy 2.0.2
 * cuda/cudatoolkit 11.8.0
+* optax 0.2.6
+* flax 0.10.7
