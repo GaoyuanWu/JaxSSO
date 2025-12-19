@@ -34,6 +34,10 @@ nlopt-python](https://pypi.org/project/nlopt/).
 
 ### Quickstart
 The project provides you with interactive examples with Google Colab for quick start. No installation locally is required. 
+* [Integration of neural networks with differentiable physics](https://colab.research.google.com/github/GaoyuanWu/JaxSSO/blob/main/Examples/Neural_Network_Topo_Shape.ipynb)
+
+![alt text](data/images/NN_diff_physics.png)
+
 * [Shape optimization of continuous shell](https://colab.research.google.com/github/GaoyuanWu/JaxSSO/blob/main/Examples/Shells_Mannheim_Multihalle_Shape.ipynb)
 
 ![alt text](data/images/Shape_cont.png)
