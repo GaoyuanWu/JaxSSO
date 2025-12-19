@@ -12,6 +12,22 @@ Developed by [Gaoyuan Wu](https://gaoyuanwu.github.io/) @ Princeton.
 * Shape optimization, size optimization and topology optimization
 * Seamless integration with machine learning (ML) libraries
 
+## Overview
+An overview of the package structure of JaxSSO is shown in the following figure.
+
+
+The  `element.py` module is related to underlying mechanics and formulations of different structural elements, such as beam-columns and MITC4 shells.
+
+The `model.py` module creates a finite element model to be analyzed. Users use this module to add structural elements, specify boundary conditions, and impose loads. 
+
+The `assemblemodel.py` module assembles the linear system equations $\bm{K}\bm{u}=\bm{f}$ to be solved, where $\bm{K}$ is the global stiffness matrix, $\bm{u}$ is the solution, and $\bm{f}$ is the external load.
+
+The `solver.py` module conducts forward analysis and solves for the solution $\bm{u}$ with various solvers: dense, sparse, on CPUs or GPUs.
+
+The `SSO_model.py` module is for backward propogation/optimization. Users can specify various parameters and objective function. Derivatives are then obtained in an automated manner thanks to AD.
+
+![alt text](data/images/Structure_JAX_SSO.png)
+
 ## Usage
 
 ### Installation
