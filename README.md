@@ -5,7 +5,7 @@ Developed by [Gaoyuan Wu](https://gaoyuanwu.github.io/) @ Princeton.
 
 ## Features
 
-* Automatic differentiation (AD): an easy and accurate way for gradient evaluation. The implementation of AD avoids deriving derivatives manually or trauncation errors from numerical differentiation.
+* Automatic differentiation (AD): an easy and accurate way for gradient evaluation. The implementation of AD avoids deriving derivatives manually or trauncation errors from numerical differentiation. AD is handy for sensitivity analysis of gradient-based optimization and training of neural networks (NN) with differentiable physics.
 * Acclerated linear algebra (XLA) and just-in-time compilation: these features in JAX boost the gradient evaluation
 * Hardware acceleration: run on GPUs and TPUs for **faster** experience
 * Support beam-column elements and MITC-4 quadrilateral shell elements
@@ -20,9 +20,9 @@ The  `element.py` module is related to underlying mechanics and formulations of 
 
 The `model.py` module creates a finite element model to be analyzed. Users use this module to add structural elements, specify boundary conditions, and impose loads. 
 
-The `assemblemodel.py` module assembles the linear system equations $\bm{K}\bm{u}=\bm{f}$ to be solved, where $\bm{K}$ is the global stiffness matrix, $\bm{u}$ is the solution, and $\bm{f}$ is the external load.
+The `assemblemodel.py` module assembles the linear system equations $\boldsymbol{K} \boldsymbol{u} = \boldsymbol{f}$ to be solved, where $\boldsymbol{K}$ is the global stiffness matrix, $\boldsymbol{u}$ is the solution, and $\boldsymbol{f}$ is the external load.
 
-The `solver.py` module conducts forward analysis and solves for the solution $\bm{u}$ with various solvers: dense, sparse, on CPUs or GPUs.
+The `solver.py` module conducts forward analysis and solves for the solution $\boldsymbol{u}$ with various solvers: dense, sparse, on CPUs or GPUs.
 
 The `SSO_model.py` module is for backward propogation/optimization. Users can specify various parameters and objective function. Derivatives are then obtained in an automated manner thanks to AD.
 
