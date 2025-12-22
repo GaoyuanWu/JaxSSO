@@ -26,7 +26,7 @@ The `solver.py` module conducts forward analysis and solves for the solution $\b
 
 The `SSO_model.py` module is for backward propogation/optimization. Users can specify various parameters and objective function. Derivatives are then obtained in an automated manner thanks to AD.
 
-![alt text](data/images/Structure_JAX_SSO.png)
+![alt text](data/images/Structure_JAX_SSO.jpg)
 
 ## Usage
 
@@ -77,7 +77,7 @@ The project provides you with interactive examples with Google Colab for quick s
 ## Cite us
 Please star, share our project with others and/or cite us if you find our work interesting and helpful.
 
-We have a new [manuscript](https://arxiv.org/abs/2407.20026) under review.
+We have a new [manuscript](https://arxiv.org/abs/2407.20026).
 
 Our previous work can be seen in this [paper](https://link.springer.com/article/10.1007/s00158-023-03601-0).
 Cite our previous work using:
