@@ -153,11 +153,12 @@ class SSO_model():
         '''
         self.model.model_ready()#make model ready
 
-        props  = (self.model.prop_beamcols,self.model.prop_quads) #Element properties
+        props  = (self.model.prop_beamcols,self.model.prop_quads,self.model.prop_tris) #Element properties
         eleparameters_list = [props[i][j,k] for (i,j,k) in zip(self.ele_types,self.eleparameters_tags,self.eleparameters_props)] #List comprehession getting the values
         self.eleparameters_values = jnp.array(eleparameters_list,dtype=float)
         self.parameters_bc = jnp.where(jnp.array(self.ele_types)==0)[0] #Indices for beamcols
         self.parameters_quads = jnp.where(jnp.array(self.ele_types)==1)[0] #Indices for quads
+        self.parameters_tris = jnp.where(jnp.array(self.ele_types)==2)[0] #Indices for tris
 
     def initialize_parameters_values(self):
         '''
@@ -219,7 +220,9 @@ class SSO_model():
         prop_beamcols = self.model.prop_beamcols.at[jnp.array(self.eleparameters_tags,dtype=int)[ele_bc],jnp.array(self.eleparameters_props,dtype=int)[ele_bc]].set(eleparameter_values[ele_bc])
         ele_quads = self.parameters_quads #Indices for quads
         prop_quads =  self.model.prop_quads.at[jnp.array(self.eleparameters_tags,dtype=int)[ele_quads],jnp.array(self.eleparameters_props,dtype=int)[ele_quads]].set(eleparameter_values[ele_quads])
-        return prop_beamcols,prop_quads
+        ele_tris = self.parameters_tris #Indices for tris
+        prop_tris = self.model.prop_tris.at[jnp.array(self.eleparameters_tags,dtype=int)[ele_tris],jnp.array(self.eleparameters_props,dtype=int)[ele_tris]].set(eleparameter_values[ele_tris])
+        return prop_beamcols,prop_quads,prop_tris
 
     @partial(jit,static_argnums=(0,2,3)) 
     def params_u(self,parameter_values,which_solver,enforce_scipy_sparse):
@@ -235,13 +238,14 @@ class SSO_model():
         
         if self.n_ele_params>0:
             eleparameter_values = parameter_values[self.n_node_params:]
-            prop_beamcols,prop_quads = self.ele_params_props(eleparameter_values) #Element parameters
+            prop_beamcols,prop_quads,prop_tris = self.ele_params_props(eleparameter_values) #Element parameters
         else:
-            prop_beamcols,prop_quads = (self.model.prop_beamcols,self.model.prop_quads)
+            prop_beamcols,prop_quads,prop_tris = (self.model.prop_beamcols,self.model.prop_quads,self.model.prop_tris)
 
         #Assemble the Stiffness Matrix
         K_aug = assemblemodel.K_aug_func(node_crds,self.model.ndof,self.model.known_id,self.model.n_beamcol,self.model.cnct_beamcols,prop_beamcols,
-                self.model.n_quad,self.model.cnct_quads,prop_quads) #Augmented stiffness matrix
+                self.model.n_quad,self.model.cnct_quads,prop_quads,
+                self.model.n_tri,self.model.cnct_tris,prop_tris) #Augmented stiffness matrix
         f_aug = assemblemodel.f_aug_func(self.model.nodal_loads,self.model.known_id) #Augmented loading vector
         
         solver_fea =self.model.select_solver(which_solver,enforce_scipy_sparse) #Select solver
