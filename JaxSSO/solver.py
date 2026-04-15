@@ -94,8 +94,7 @@ def jax_lstsq_solve(K_aug,f_aug):
     '''
     Dense least-squares solving of Ax=b using jnp.linalg.lstsq.
 
-    Robust to near-singular or singular systems (e.g., from drilling DOFs
-    in near-flat shell elements). Returns the minimum-norm solution.
+    Robust to near-singular or singular systems. Returns the minimum-norm solution.
 
     Parameters:
     K_aug:
