@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# Virtual environments
+.venv/
+
+# UV
+uv.lock
+
+# Generated outputs
+Examples/output/
+Examples/Data/mannheim_quad.vtu
+Examples/*.png
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Jupyter
+.ipynb_checkpoints/

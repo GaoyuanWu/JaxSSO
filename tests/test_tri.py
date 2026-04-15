@@ -198,3 +198,91 @@ def test_tri_3d_orientation():
     eigvals = jnp.sort(jnp.abs(jnp.linalg.eigvalsh(K)))
     n_zero = jnp.sum(eigvals < 1e-6 * eigvals[-1])
     assert int(n_zero) == 6, f"Expected 6 zero eigenvalues in 3D, got {int(n_zero)}"
+
+
+# -------------------------------------------------------------------
+# Test 6: Forward solve — clamped circular plate with center point load
+# -------------------------------------------------------------------
+@pytest.mark.parametrize("which_solver", ["dense", "sparse"])
+def test_tri_clamped_disk(which_solver):
+    '''
+    Clamped circular plate under center point load.
+
+    Analytical solution (Timoshenko & Woinowsky-Krieger, 1959):
+        w_center = P * R^2 / (16 * pi * D)
+        D = E * t^3 / (12 * (1 - nu^2))
+
+    We generate a triangular mesh of a disk using Delaunay triangulation,
+    fix the boundary, apply a point load at the center, and compare the
+    center deflection against the analytical value.
+    '''
+    from scipy.spatial import Delaunay
+
+    # Parameters
+    R = 1.0       # radius
+    t_plate = 0.05
+    E_plate = 2e11   # steel
+    nu_plate = 0.3
+    P = 1000.0    # center point load
+
+    D = E_plate * t_plate**3 / (12 * (1 - nu_plate**2))
+    w_analytical = P * R**2 / (16 * np.pi * D)
+
+    # Generate disk mesh: concentric rings of nodes
+    nodes = [(0.0, 0.0)]  # center node
+    n_rings = 15
+    for ring in range(1, n_rings + 1):
+        r = R * ring / n_rings
+        n_pts = max(8, 8 * ring)  # more points on outer rings
+        for j in range(n_pts):
+            theta = 2 * np.pi * j / n_pts
+            nodes.append((r * np.cos(theta), r * np.sin(theta)))
+
+    nodes = np.array(nodes)
+    n_node = len(nodes)
+    xs_d = nodes[:, 0]
+    ys_d = nodes[:, 1]
+
+    # Delaunay triangulation
+    tri = Delaunay(nodes)
+    cnct = tri.simplices  # (n_tri, 3)
+
+    # Remove triangles with centroid outside the disk (Delaunay convex hull artifact)
+    centroids = nodes[cnct].mean(axis=1)
+    r_centroids = np.sqrt(centroids[:, 0]**2 + centroids[:, 1]**2)
+    mask = r_centroids < R * 1.01
+    cnct = cnct[mask]
+
+    # Identify boundary nodes (on the outer ring)
+    r_nodes = np.sqrt(xs_d**2 + ys_d**2)
+    bc_tol = R * 0.05
+    bc_mask = np.abs(r_nodes - R) < bc_tol
+
+    # Build model
+    model = Model.Model()
+    for i in range(n_node):
+        model.add_node(i, xs_d[i], ys_d[i], 0.0)
+        if bc_mask[i]:
+            model.add_support(i, [1, 1, 1, 1, 1, 1])  # clamped
+
+    # Apply point load at center (node 0)
+    model.add_nodal_load(0, nodal_load=[0.0, 0.0, -P, 0.0, 0.0, 0.0])
+
+    for i in range(len(cnct)):
+        model.add_tri(i, cnct[i, 0], cnct[i, 1], cnct[i, 2],
+                      t_plate, E_plate, nu_plate)
+
+    model.solve(which_solver=which_solver)
+    u = model.u
+
+    # Center deflection (node 0, z-dof = index 2)
+    w_fem = abs(float(u[0 * 6 + 2]))
+
+    # Allow 15% error (coarse mesh, point load singularity)
+    rtol = 0.15
+    assert np.isclose(w_fem, w_analytical, rtol=rtol), (
+        f"Clamped disk deflection mismatch:\n"
+        f"  FEM = {w_fem:.6e}\n"
+        f"  Analytical = {w_analytical:.6e}\n"
+        f"  Relative error = {abs(w_fem - w_analytical) / w_analytical:.4f}"
+    )
