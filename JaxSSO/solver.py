@@ -79,7 +79,7 @@ def jax_dense_solve(K_aug,f_aug):
     Parameters:
     K_aug:
         jax.experimental.BCOO format of the augmented stiffness matrix
-
+    
     f_aug:
         ndarray, RHS of the (augmented) linear system
 
