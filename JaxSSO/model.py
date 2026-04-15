@@ -5,7 +5,7 @@ Functions for: adding nodes, adding supports, adding loads, etc.
 #%%
 import numpy as np
 import jax.numpy as jnp
-from .element import BeamCol,Truss,Quad
+from .element import BeamCol,Truss,Quad,Tri
 from . import solver,assemblemodel
 import jax
 from jax.tree_util import register_pytree_node_class
@@ -46,6 +46,7 @@ class Model():
         self.beamcols = {}    # dictionary for the beamcols: key is eleTag, value is a list of beamcol attributes
         #self.trusses = {}    # Trusses in the system, TODO: NOT YET IMPLEMENTED
         self.quads = {} # dictionary for the MITC-4 quad shell elements: key is eleTag, value is a list of beamcol attributes
+        self.tris = {} # dictionary for the MITC-3 triangle shell elements
         #self.elements = {} #including all the elements, TODO
         self.known_indices = [] #Storing the indices of the known dofs
         self.f = {} #nodal loads
@@ -179,7 +180,36 @@ class Model():
         new_quad = Quad(eleTag, i_nodeTag, j_nodeTag, m_nodeTag, n_nodeTag, 
                 t, E, nu, kx_mod, ky_mod)
         self.quads[eleTag] = new_quad
-    
+
+    def add_tri(self, eleTag:int, i_nodeTag:int, j_nodeTag:int, m_nodeTag:int,
+                t:float, E:float, nu:float, kx_mod=1.0, ky_mod=1.0):
+        '''
+        Adding/updating a triangular shell element (MITC3) to the model.
+
+        Inputs
+        ----------
+        eleTag : int
+            Index of this element
+
+        i_nodeTag, j_nodeTag, m_nodeTag : int
+            The tags of the three corner nodes
+
+        t : float
+            Thickness
+
+        E : float
+            Young's modulus
+
+        nu : float
+            Poisson's ratio
+
+        kx_mod, ky_mod : float
+            Stiffness modification factor
+        '''
+        new_tri = Tri(eleTag, i_nodeTag, j_nodeTag, m_nodeTag,
+                      t, E, nu, kx_mod, ky_mod)
+        self.tris[eleTag] = new_tri
+
     def add_support(self,nodeTag,active_supports=[1,1,1,1,1,1]):
         '''
         Adding nodal support in the model.
@@ -243,7 +273,12 @@ class Model():
         #Quads
         self.n_quad = len(self.quads)
         self.cnct_quads = self.get_cnct_quads()
-        self.prop_quads = jnp.array(self.get_quads_cross_prop())        
+        self.prop_quads = jnp.array(self.get_quads_cross_prop())
+
+        #Tris
+        self.n_tri = len(self.tris)
+        self.cnct_tris = self.get_cnct_tris()
+        self.prop_tris = jnp.array(self.get_tris_cross_prop())
 
     def get_node_crds(self):
         '''
@@ -336,7 +371,29 @@ class Model():
         kx_mods = np.array([[qd.kx_mod for qd in self.quads.values()]])
         ky_mods = np.array([[qd.ky_mod for qd in self.quads.values()]])
         return np.vstack((ts, Es, nus, kx_mods, ky_mods)).T
-    
+
+    def get_cnct_tris(self):
+        '''
+        Get the connectivity matrix of triangle elements.
+        Return a 2D array of shape (n_tri, 3)
+        '''
+        i_nodes_tags = np.array([[tr.i_nodeTag for tr in self.tris.values()]], dtype='int32')
+        j_nodes_tags = np.array([[tr.j_nodeTag for tr in self.tris.values()]], dtype='int32')
+        m_nodes_tags = np.array([[tr.m_nodeTag for tr in self.tris.values()]], dtype='int32')
+        return np.vstack((i_nodes_tags, j_nodes_tags, m_nodes_tags)).T
+
+    def get_tris_cross_prop(self):
+        '''
+        Get cross-sectional properties of tris: t, E, nu, kx_mod, ky_mod
+        Return a 2D array of shape (n_tri, 5)
+        '''
+        ts = np.array([[tr.t for tr in self.tris.values()]])
+        Es = np.array([[tr.E for tr in self.tris.values()]])
+        nus = np.array([[tr.nu for tr in self.tris.values()]])
+        kx_mods = np.array([[tr.kx_mod for tr in self.tris.values()]])
+        ky_mods = np.array([[tr.ky_mod for tr in self.tris.values()]])
+        return np.vstack((ts, Es, nus, kx_mods, ky_mods)).T
+
     def select_solver(self,which_solver,enforce_scipy_sparse):
         '''
         Determine which solver to use
@@ -369,6 +426,7 @@ class Model():
             which_meter: str, either 'sparse' or 'dense'.
             enforce_scipy_sparse: bool, True if using scipy's sparse solver no matter what device is being used
         '''
+        self.model_ready() #Ensure the model is ready for analysis
         K_aug = assemblemodel.model_K_aug(self) #LHS
         f_aug = assemblemodel.model_f_aug(self) #RHS
         ndof = self.get_dofs() #number of dofs in the system

@@ -1239,3 +1239,478 @@ class Quad():
         indices = indices.reshape(-1,2) #re-dimension to 2darray of shape (576*n_quad,2)
         K= sparse.BCOO((data,indices),shape=(ndof,ndof))
         return K
+
+#%%
+class Tri():
+    '''
+    A class for a triangular shell element based on MITC3 theory.
+
+    References
+    ----------
+    1. Lee, P.S. and Bathe, K.J. (2004). Development of MITC isotropic triangular
+       shell finite elements. Computers & Structures, 82, 945-962.
+    2. Bathe, K.J. (2006). Finite Element Procedures. Klaus-Jurgen Bathe.
+
+    Parameters
+    -----
+    eleTag: int
+        The tag of this element
+
+    i_nodeTag, j_nodeTag, m_nodeTag: int
+        Node tags of the three corner nodes
+
+    t: float
+        Thickness
+
+    E: float
+        Young's modulus
+
+    nu: float
+        Poisson's ratio
+
+    kx_mod, ky_mod: float
+        Stiffness modification factors for local x and y axes
+    '''
+    def __init__(self, eleTag, i_nodeTag, j_nodeTag, m_nodeTag,
+                 t, E, nu, kx_mod=1.0, ky_mod=1.0):
+        self.dofs = 3 * 6  # 18 DOFs total
+        self.eleTag = eleTag
+        self.i_nodeTag = i_nodeTag
+        self.j_nodeTag = j_nodeTag
+        self.m_nodeTag = m_nodeTag
+        self.t = t
+        self.E = E
+        self.nu = nu
+        self.kx_mod = kx_mod
+        self.ky_mod = ky_mod
+
+    @staticmethod
+    def loc_crds(crds):
+        '''
+        Get local coordinates for a triangle.
+        Node 1 is the origin, edge 1->2 defines local x-axis.
+
+        Parameters
+        ----------
+        crds : (9,) array
+            [X1,Y1,Z1, X2,Y2,Z2, X3,Y3,Z3]
+
+        Returns
+        -------
+        new_xys : (6,) array
+            [x1,y1, x2,y2, x3,y3] in local coordinates
+        normal : (3,) array
+            unit normal to the triangle
+        '''
+        X1, Y1, Z1, X2, Y2, Z2, X3, Y3, Z3 = crds
+
+        vector_12 = jnp.array([X2 - X1, Y2 - Y1, Z2 - Z1])
+        vector_13 = jnp.array([X3 - X1, Y3 - Y1, Z3 - Z1])
+
+        # Local axes
+        x_axis = vector_12 / jnp.linalg.norm(vector_12)
+        z_axis = jnp.cross(vector_12, vector_13)
+        z_axis = z_axis / jnp.linalg.norm(z_axis)
+        y_axis = jnp.cross(z_axis, x_axis)
+
+        # Project node coordinates into local frame (node 1 = origin)
+        x1_loc = 0.0
+        y1_loc = 0.0
+        x2_loc = jnp.dot(vector_12, x_axis)
+        y2_loc = jnp.dot(vector_12, y_axis)
+        x3_loc = jnp.dot(vector_13, x_axis)
+        y3_loc = jnp.dot(vector_13, y_axis)
+
+        new_xys = jnp.array([x1_loc, y1_loc, x2_loc, y2_loc, x3_loc, y3_loc])
+        return new_xys, z_axis
+
+    @staticmethod
+    def T(crds):
+        '''
+        Returns the 18x18 coordinate transformation matrix for the triangle.
+        '''
+        X1, Y1, Z1, X2, Y2, Z2, X3, Y3, Z3 = crds
+
+        vector_12 = jnp.array([X2 - X1, Y2 - Y1, Z2 - Z1])
+        vector_13 = jnp.array([X3 - X1, Y3 - Y1, Z3 - Z1])
+
+        x_axis = vector_12 / jnp.linalg.norm(vector_12)
+        z_axis = jnp.cross(vector_12, vector_13)
+        z_axis = z_axis / jnp.linalg.norm(z_axis)
+        y_axis = jnp.cross(z_axis, x_axis)
+
+        dirCos = jnp.array([x_axis, y_axis, z_axis])
+
+        # Build 18x18 block-diagonal transformation
+        T_rows = np.array([
+            0, 0, 0, 1, 1, 1, 2, 2, 2,
+            3, 3, 3, 4, 4, 4, 5, 5, 5,
+            6, 6, 6, 7, 7, 7, 8, 8, 8,
+            9, 9, 9, 10,10,10, 11,11,11,
+            12,12,12, 13,13,13, 14,14,14,
+            15,15,15, 16,16,16, 17,17,17], dtype='int32')
+
+        T_cols = np.array([
+            0, 1, 2, 0, 1, 2, 0, 1, 2,
+            3, 4, 5, 3, 4, 5, 3, 4, 5,
+            6, 7, 8, 6, 7, 8, 6, 7, 8,
+            9,10,11, 9,10,11, 9,10,11,
+            12,13,14, 12,13,14, 12,13,14,
+            15,16,17, 15,16,17, 15,16,17], dtype='int32')
+
+        ex_dirCos = jnp.tile(dirCos.reshape(-1), 6)  # 6 blocks of 3x3
+
+        T = jnp.zeros((18, 18))
+        T = T.at[T_rows, T_cols].set(ex_dirCos)
+        return T
+
+    @staticmethod
+    def J(new_xys):
+        '''
+        Returns the constant Jacobian matrix for a linear triangle.
+        Maps from natural coordinates (r, s) to local (x, y).
+
+        Natural coordinates: N1 = 1-r-s, N2 = r, N3 = s
+        dN/dr = [-1, 1, 0], dN/ds = [-1, 0, 1]
+
+        Returns shape (2, 2).
+        '''
+        x1, y1, x2, y2, x3, y3 = new_xys
+        return jnp.array([[x2 - x1, x3 - x1],
+                          [y2 - y1, y3 - y1]])
+
+    @staticmethod
+    def B_kappa(new_xys, J_val):
+        '''
+        Bending strain-displacement matrix. Constant for linear triangle.
+
+        Returns shape (3, 9): maps [w, theta_x, theta_y] x 3 nodes to [kappa_xx, kappa_yy, 2*kappa_xy].
+        '''
+        # Shape function derivatives in natural coords
+        # dN/dr = [-1, 1, 0],  dN/ds = [-1, 0, 1]
+        dN_nat = jnp.array([[-1.0, 1.0, 0.0],
+                            [-1.0, 0.0, 1.0]])
+
+        # Transform to physical derivatives: [dN/dx; dN/dy] = J^{-1} @ [dN/dr; dN/ds]
+        dH = jnp.linalg.solve(J_val.T, dN_nat)  # (2, 3) — J^{-T} maps natural to physical derivatives
+
+        # B_kappa: kappa_xx = -d(theta_y)/dx, kappa_yy = d(theta_x)/dy,
+        #          kappa_xy = d(theta_x)/dx - d(theta_y)/dy
+        # DOF order per node: [w, theta_x, theta_y]
+        B = jnp.array([
+            [0.0,     0.0,     -dH[0, 0],  0.0,     0.0,     -dH[0, 1],  0.0,     0.0,     -dH[0, 2]],
+            [0.0,  dH[1, 0],     0.0,      0.0,  dH[1, 1],     0.0,      0.0,  dH[1, 2],     0.0    ],
+            [0.0,  dH[0, 0],  -dH[1, 0],   0.0,  dH[0, 1],  -dH[1, 1],  0.0,  dH[0, 2],  -dH[1, 2]]])
+        return B  # (3, 9)
+
+    @staticmethod
+    def B_m(new_xys, J_val):
+        '''
+        Membrane strain-displacement matrix. Constant for linear triangle.
+
+        Returns shape (3, 6): maps [u, v] x 3 nodes to [eps_xx, eps_yy, gamma_xy].
+        '''
+        dN_nat = jnp.array([[-1.0, 1.0, 0.0],
+                            [-1.0, 0.0, 1.0]])
+        dH = jnp.linalg.solve(J_val.T, dN_nat)  # (2, 3) — J^{-T} maps natural to physical derivatives
+
+        B = jnp.array([
+            [dH[0, 0],    0.0,     dH[0, 1],    0.0,     dH[0, 2],    0.0    ],
+            [   0.0,   dH[1, 0],      0.0,   dH[1, 1],      0.0,   dH[1, 2]],
+            [dH[1, 0], dH[0, 0],  dH[1, 1], dH[0, 1],  dH[1, 2], dH[0, 2]]])
+        return B  # (3, 6)
+
+    @staticmethod
+    def B_gamma_MITC3(new_xys, r, s, J_val):
+        '''
+        MITC3 transverse shear strain-displacement matrix.
+
+        Shear strains are sampled at edge midpoints (tying points) and
+        interpolated linearly to avoid shear locking.
+
+        Tying points (in natural coordinates r, s):
+            Edge 1-2 midpoint: (1/2, 0)
+            Edge 2-3 midpoint: (1/2, 1/2)
+            Edge 1-3 midpoint: (0, 1/2)
+
+        Returns shape (2, 9): maps [w, theta_x, theta_y] x 3 nodes
+        to [gamma_xz, gamma_yz].
+        '''
+        x1, y1, x2, y2, x3, y3 = new_xys
+
+        # Shape functions: N1 = 1-r-s, N2 = r, N3 = s
+        # dN/dr = [-1, 1, 0],  dN/ds = [-1, 0, 1]
+        # Transverse shear: gamma_xz = dw/dx + theta_y (note sign convention: beta_x = -theta_y)
+        #                   gamma_yz = dw/dy - theta_x (note: beta_y = theta_x)
+        # In natural coords: gamma_rz = dw/dr + J11*theta_y - J21*theta_x  (covariant)
+        #                     gamma_sz = dw/ds + J12*theta_y - J22*theta_x
+
+        J11 = x2 - x1
+        J12 = x3 - x1
+        J21 = y2 - y1
+        J22 = y3 - y1
+
+        # --- Covariant shear at tying points ---
+        # gamma_rz at edge 1-2 midpoint (r=1/2, s=0): N1=1/2, N2=1/2, N3=0
+        # dw/dr = -w1 + w2 (from dN/dr)
+        # theta_x at tying point = (theta_x1 + theta_x2)/2
+        # theta_y at tying point = (theta_y1 + theta_y2)/2
+        # gamma_rz^(1) = (-w1 + w2) + J11*(thy1+thy2)/2 - J21*(thx1+thx2)/2
+
+        # gamma_sz at edge 1-3 midpoint (r=0, s=1/2): N1=1/2, N2=0, N3=1/2
+        # gamma_sz^(3) = (-w1 + w3) + J12*(thy1+thy3)/2 - J22*(thx1+thx3)/2
+
+        # gamma_rz at edge 2-3 midpoint (r=1/2, s=1/2): N1=0, N2=1/2, N3=1/2
+        # For this edge we need the covariant component along edge 2->3.
+        # Edge 2->3 direction in natural coords: dr=-1, ds=1, so
+        # gamma along edge 2-3 = -gamma_rz + gamma_sz
+        # gamma_sz^(2) - gamma_rz^(2):
+        #   gamma_rz^(2) = (-w1+w2) + J11*(thy2+thy3)/2 - J21*(thx2+thx3)/2  (extrapolated)
+        #   gamma_sz^(2) = (-w1+w3) + J12*(thy2+thy3)/2 - J22*(thx2+thx3)/2  (extrapolated)
+        # But for MITC3, we interpolate gamma_rz linearly in s, gamma_sz linearly in r:
+
+        # MITC3 assumed shear field (Lee & Bathe 2004):
+        # gamma_rz(r,s) = (1-s)*gamma_rz^(e1) + s*gamma_rz^(e3_r)
+        # gamma_sz(r,s) = (1-r)*gamma_sz^(e2) + r*gamma_sz^(e3_s)
+        # where e1 = edge 1-2 midpoint, e2 = edge 1-3 midpoint,
+        #       e3_r and e3_s are the r and s components at the edge 2-3 midpoint.
+
+        # Tying values as functions of DOFs [w1,thx1,thy1, w2,thx2,thy2, w3,thx3,thy3]:
+        # gamma_rz at (1/2, 0):
+        g_rz_e1 = jnp.array([-1.0, -J21/2, J11/2,
+                              1.0, -J21/2, J11/2,
+                              0.0,    0.0,   0.0])
+
+        # gamma_sz at (0, 1/2):
+        g_sz_e2 = jnp.array([-1.0, -J22/2, J12/2,
+                              0.0,    0.0,   0.0,
+                              1.0, -J22/2, J12/2])
+
+        # gamma_rz at (1/2, 1/2) - edge 2-3 midpoint:
+        g_rz_e3 = jnp.array([-1.0, -J21/2, J11/2,
+                              1.0, -J21/2, J11/2,
+                              0.0,    0.0,   0.0])
+        # Wait: dw/dr is the same regardless of s for linear shape functions (-w1+w2),
+        # but the theta interpolation changes. At (1/2, 1/2): N1=0, N2=1/2, N3=1/2
+        g_rz_e3 = jnp.array([-1.0,    0.0,   0.0,
+                              1.0, -J21/4, J11/4,
+                              0.0, -J21/4, J11/4])
+        # Actually, let me be more careful.
+        # gamma_rz = dw/dr + (N_i * theta_yi)*J11 - (N_i * theta_xi)*J21
+        # dw/dr = dN/dr @ [w1,w2,w3] = -w1 + w2  (always, shape fn derivative is constant)
+        # At (r,s): N1=1-r-s, N2=r, N3=s
+        # So: gamma_rz = (-w1+w2) + J11*(N1*thy1+N2*thy2+N3*thy3) - J21*(N1*thx1+N2*thx2+N3*thx3)
+
+        # At e1 = (1/2, 0): N1=1/2, N2=1/2, N3=0
+        g_rz_e1 = jnp.array([-1.0, -J21/2, J11/2,
+                              1.0, -J21/2, J11/2,
+                              0.0,    0.0,   0.0])
+
+        # At e3 = (1/2, 1/2): N1=0, N2=1/2, N3=1/2
+        g_rz_e3 = jnp.array([-1.0,   0.0,    0.0,
+                              1.0, -J21/2, J11/2,
+                              0.0, -J21/2, J11/2])
+        # Wait, N1=0 so no contribution from node 1 rotations, but dw/dr still has -w1+w2.
+        # Let me redo:
+        # gamma_rz at (r,s) = (-w1 + w2) + J11*((1-r-s)*thy1 + r*thy2 + s*thy3)
+        #                                 - J21*((1-r-s)*thx1 + r*thx2 + s*thx3)
+        # At (1/2, 0): gamma_rz = (-w1+w2) + J11*(1/2*thy1+1/2*thy2) - J21*(1/2*thx1+1/2*thx2)
+        #   -> coefficients: w1:-1, thx1:-J21/2, thy1:J11/2, w2:1, thx2:-J21/2, thy2:J11/2, rest 0
+        # At (1/2, 1/2): gamma_rz = (-w1+w2) + J11*(0+1/2*thy2+1/2*thy3) - J21*(0+1/2*thx2+1/2*thx3)
+        #   -> w1:-1, w2:1, thx2:-J21/2, thy2:J11/2, thx3:-J21/2, thy3:J11/2
+
+        g_rz_e3 = jnp.array([-1.0,   0.0,    0.0,
+                              1.0, -J21/2, J11/2,
+                              0.0, -J21/2, J11/2])
+
+        # gamma_sz at (r,s) = (-w1 + w3) + J12*((1-r-s)*thy1 + r*thy2 + s*thy3)
+        #                                 - J22*((1-r-s)*thx1 + r*thx2 + s*thx3)
+        # At (0, 1/2): gamma_sz = (-w1+w3) + J12*(1/2*thy1+1/2*thy3) - J22*(1/2*thx1+1/2*thx3)
+        g_sz_e2 = jnp.array([-1.0, -J22/2, J12/2,
+                              0.0,    0.0,   0.0,
+                              1.0, -J22/2, J12/2])
+
+        # At (1/2, 1/2): gamma_sz = (-w1+w3) + J12*(0+1/2*thy2+1/2*thy3) - J22*(0+1/2*thx2+1/2*thx3)
+        g_sz_e3 = jnp.array([-1.0,   0.0,    0.0,
+                              0.0, -J22/2, J12/2,
+                              1.0, -J22/2, J12/2])
+
+        # MITC3 assumed field: interpolate linearly
+        # gamma_rz(r,s) = (1 - s)*gamma_rz^(e1) + s*gamma_rz^(e3)
+        # gamma_sz(r,s) = (1 - r)*gamma_sz^(e2) + r*gamma_sz^(e3)
+        B_rz = (1 - s) * g_rz_e1 + s * g_rz_e3  # (9,)
+        B_sz = (1 - r) * g_sz_e2 + r * g_sz_e3  # (9,)
+
+        # Transform covariant shear to physical shear:
+        # [gamma_xz, gamma_yz] = J^{-T} @ [gamma_rz, gamma_sz]
+        J_invT = jnp.linalg.inv(J_val).T  # (2,2)
+        B_gamma = jnp.vstack([
+            J_invT[0, 0] * B_rz + J_invT[0, 1] * B_sz,
+            J_invT[1, 0] * B_rz + J_invT[1, 1] * B_sz
+        ])  # (2, 9)
+
+        return B_gamma
+
+    # Constitutive matrices: reuse Quad's (identical formulas)
+    Cb = Quad.Cb
+    Cs = Quad.Cs
+    Cm = Quad.Cm
+
+    @staticmethod
+    def index_k_b():
+        '''
+        Index arrays for expanding 9x9 bending stiffness into 18x18 full stiffness.
+        Bending DOFs per node: [w, theta_x, theta_y] at positions [2,3,4], [8,9,10], [14,15,16].
+        '''
+        bending_dofs = np.array([2, 3, 4, 8, 9, 10, 14, 15, 16], dtype='int32')
+        i_vec = np.linspace(0, 8, 9, dtype='int32')
+        j_vec = np.linspace(0, 8, 9, dtype='int32')
+        i_arr, j_arr = np.meshgrid(i_vec, j_vec, indexing='ij')
+        m_arr, n_arr = np.meshgrid(bending_dofs, bending_dofs, indexing='ij')
+        return m_arr, n_arr, i_arr, j_arr
+
+    @staticmethod
+    def index_k_m():
+        '''
+        Index arrays for expanding 6x6 membrane stiffness into 18x18 full stiffness.
+        Membrane DOFs per node: [u, v] at positions [0,1], [6,7], [12,13].
+        '''
+        membrane_dofs = np.array([0, 1, 6, 7, 12, 13], dtype='int32')
+        i_vec = np.linspace(0, 5, 6, dtype='int32')
+        j_vec = np.linspace(0, 5, 6, dtype='int32')
+        i_arr, j_arr = np.meshgrid(i_vec, j_vec, indexing='ij')
+        m_arr, n_arr = np.meshgrid(membrane_dofs, membrane_dofs, indexing='ij')
+        return m_arr, n_arr, i_arr, j_arr
+
+    @staticmethod
+    def k_b(crds, t, E, nu, kx_mod=1.0, ky_mod=1.0):
+        '''
+        Returns the 18x18 local stiffness matrix for bending + transverse shear.
+        '''
+        new_xys, normal = Tri.loc_crds(crds)
+        J_val = Tri.J(new_xys)
+        det_J = jnp.linalg.det(J_val)
+        area = 0.5 * jnp.abs(det_J)
+
+        Cb_val = Tri.Cb(nu, E, t)
+        Cs_val = Tri.Cs(nu, E, t)
+
+        # Bending: B_kappa is constant, so integral = B^T C B * area
+        B_k = Tri.B_kappa(new_xys, J_val)
+        k_bending = jnp.matmul(B_k.T, jnp.matmul(Cb_val, B_k)) * area  # (9, 9)
+
+        # Shear (MITC3): use 3-point Gauss quadrature for triangles
+        # Points: (1/6,1/6), (2/3,1/6), (1/6,2/3), weights: 1/6 each (times det_J)
+        gp = jnp.array([[1.0/6, 1.0/6],
+                         [2.0/3, 1.0/6],
+                         [1.0/6, 2.0/3]])
+        w_gp = 1.0 / 6.0  # weight for each point (includes the 1/2 from triangle area)
+
+        k_shear = jnp.zeros((9, 9))
+        for i in range(3):
+            B_g = Tri.B_gamma_MITC3(new_xys, gp[i, 0], gp[i, 1], J_val)
+            k_shear = k_shear + jnp.matmul(B_g.T, jnp.matmul(Cs_val, B_g)) * w_gp * jnp.abs(det_J)
+
+        k = k_bending + k_shear  # (9, 9)
+
+        # Drilling DOF weak spring
+        k_rz = jnp.min(jnp.abs(jnp.array([k[1, 1], k[2, 2], k[4, 4], k[5, 5], k[7, 7], k[8, 8]]))) / 1000.0
+
+        # Expand 9x9 to 18x18
+        k_exp = jnp.zeros((18, 18))
+        m_arr, n_arr, i_arr, j_arr = Tri.index_k_b()
+        k_exp = k_exp.at[m_arr, n_arr].set(k[i_arr, j_arr])
+
+        # Add drilling springs at DOFs [5, 11, 17]
+        k_rz_idx = np.array([5, 11, 17], dtype='int32')
+        k_exp = k_exp.at[k_rz_idx, k_rz_idx].set(k_rz * jnp.ones(3))
+
+        return k_exp
+
+    @staticmethod
+    def k_m(crds, t, E, nu, kx_mod=1.0, ky_mod=1.0):
+        '''
+        Returns the 18x18 local stiffness matrix for membrane (in-plane) stresses.
+        '''
+        new_xys, normal = Tri.loc_crds(crds)
+        J_val = Tri.J(new_xys)
+        det_J = jnp.linalg.det(J_val)
+        area = 0.5 * jnp.abs(det_J)
+
+        Cm_val = Tri.Cm(nu, E, kx_mod, ky_mod)
+        B_membrane = Tri.B_m(new_xys, J_val)
+
+        # B_m is constant, so integral = t * B^T C B * area
+        k = t * jnp.matmul(B_membrane.T, jnp.matmul(Cm_val, B_membrane)) * area  # (6, 6)
+
+        # Expand 6x6 to 18x18
+        k_exp = jnp.zeros((18, 18))
+        m_arr, n_arr, i_arr, j_arr = Tri.index_k_m()
+        k_exp = k_exp.at[m_arr, n_arr].set(k[i_arr, j_arr])
+
+        return k_exp
+
+    @staticmethod
+    def element_K_tri(crds, t, E, nu, kx_mod, ky_mod):
+        '''
+        Given the attributes of a triangle, return element stiffness in global coordinates.
+        '''
+        ele_Km = Tri.k_m(crds, t, E, nu, kx_mod, ky_mod)
+        ele_Kb = Tri.k_b(crds, t, E, nu, kx_mod, ky_mod)
+        ele_K = ele_Km + ele_Kb
+        ele_T = Tri.T(crds)
+        ele_K_global = jnp.matmul(jnp.linalg.solve(ele_T, ele_K), ele_T)
+        return ele_K_global
+
+    @staticmethod
+    def element_K_tri_indices(i_nodeTag, j_nodeTag, m_nodeTag):
+        '''
+        Return the (row, col) indices for assembling this element into the global stiffness matrix.
+        Returns shape (324, 2).
+        '''
+        indices_dof = jnp.hstack((
+            jnp.linspace(i_nodeTag * 6, i_nodeTag * 6 + 5, 6, dtype='int32'),
+            jnp.linspace(j_nodeTag * 6, j_nodeTag * 6 + 5, 6, dtype='int32'),
+            jnp.linspace(m_nodeTag * 6, m_nodeTag * 6 + 5, 6, dtype='int32')))
+        rows, cols = jnp.meshgrid(indices_dof, indices_dof, indexing='ij')
+        indices = jnp.vstack((rows.ravel(), cols.ravel())).T
+        return indices
+
+    @staticmethod
+    @partial(jit, static_argnums=(3))
+    def K_tri(node_crds, prop, cnct, ndof):
+        '''
+        Return the global stiffness contribution of triangles in sparse BCOO format.
+
+        Parameters
+        ----------
+        node_crds : (n_node, 3)
+        prop : (n_tri, 5) — [t, E, nu, kx_mod, ky_mod]
+        cnct : (n_tri, 3)
+        ndof : int (static)
+
+        Returns
+        -------
+        K : sparse.BCOO (ndof, ndof)
+        '''
+        ts = prop[:, 0]
+        Es = prop[:, 1]
+        nus = prop[:, 2]
+        kx_mods = prop[:, 3]
+        ky_mods = prop[:, 4]
+
+        i_nodeTags = cnct[:, 0]
+        j_nodeTags = cnct[:, 1]
+        m_nodeTags = cnct[:, 2]
+
+        i_crds = node_crds[i_nodeTags, :]
+        j_crds = node_crds[j_nodeTags, :]
+        m_crds = node_crds[m_nodeTags, :]
+        e_crds = jnp.hstack((i_crds, j_crds, m_crds))  # (n_tri, 9)
+
+        data = jnp.ravel(vmap(Tri.element_K_tri)(e_crds, ts, Es, nus, kx_mods, ky_mods))
+        data = data.reshape(-1)  # (324*n_tri,)
+        indices = vmap(Tri.element_K_tri_indices)(i_nodeTags, j_nodeTags, m_nodeTags)
+        indices = indices.reshape(-1, 2)  # (324*n_tri, 2)
+        K = sparse.BCOO((data, indices), shape=(ndof, ndof))
+        return K

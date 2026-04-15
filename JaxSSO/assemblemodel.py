@@ -4,7 +4,7 @@ This modules take 'model' object as input and assemble the linear system Ax=b(Ku
 #%%
 import numpy as np
 import jax.numpy as jnp
-from .element import BeamCol,Quad
+from .element import BeamCol,Quad,Tri
 from jax import vmap,jit,custom_jvp,jacfwd
 from jax.experimental import sparse
 import jax
@@ -193,7 +193,7 @@ def f_aug(loads,ncons):
 
     return f_aug_dense
 
-def K_func(node_crds,ndof,n_beamcol,cnct_beamcols,prop_beamcols,n_quad,cnct_quads,prop_quads):
+def K_func(node_crds,ndof,n_beamcol,cnct_beamcols,prop_beamcols,n_quad,cnct_quads,prop_quads,n_tri=0,cnct_tris=None,prop_tris=None):
     '''
     Take all the parameters and return the stiffness matrix (not augmented)
     '''
@@ -209,10 +209,12 @@ def K_func(node_crds,ndof,n_beamcol,cnct_beamcols,prop_beamcols,n_quad,cnct_quad
         #K = K + K_beamcol_cus(node_crds,prop_beamcols,cnct_beamcols,ndof,n_beamcol), this is still TODO.
     if n_quad>0:
         K = K + Quad.K_quad(node_crds,prop_quads,cnct_quads,ndof)
-    
+    if n_tri>0:
+        K = K + Tri.K_tri(node_crds,prop_tris,cnct_tris,ndof)
+
     return K
 
-def K_aug_func(node_crds,ndof,known_dofs,n_beamcol,cnct_beamcols,prop_beamcols,n_quad,cnct_quads,prop_quads):
+def K_aug_func(node_crds,ndof,known_dofs,n_beamcol,cnct_beamcols,prop_beamcols,n_quad,cnct_quads,prop_quads,n_tri=0,cnct_tris=None,prop_tris=None):
     '''
     Take all the parameters and return the (augmented) stiffness matrix
     '''
@@ -221,10 +223,11 @@ def K_aug_func(node_crds,ndof,known_dofs,n_beamcol,cnct_beamcols,prop_beamcols,n
     ncons = known_dofs.shape[0]#dofs of the system
     k_nse = n_beamcol*12*12 #Beamcols
     k_nse += n_quad*24*24 #Quads
+    k_nse += n_tri*18*18 #Tris
     k_nse += 1 #initialization entry in model_K
 
     #Stiffness matrix
-    K_bcoo = K_func(node_crds,ndof,n_beamcol,cnct_beamcols,prop_beamcols,n_quad,cnct_quads,prop_quads) #original
+    K_bcoo = K_func(node_crds,ndof,n_beamcol,cnct_beamcols,prop_beamcols,n_quad,cnct_quads,prop_quads,n_tri,cnct_tris,prop_tris) #original
     K_aug_res = K_aug(known_dofs,K_bcoo,ndof,ncons,k_nse) #augmented
     return K_aug_res
 
@@ -253,15 +256,16 @@ def model_K(model):
         Global stiffness matrix w/o applying boundary conditions
     '''
     K = K_func(model.crds,model.ndof,model.n_beamcol,model.cnct_beamcols,model.prop_beamcols,
-            model.n_quad,model.cnct_quads,model.prop_quads)
+            model.n_quad,model.cnct_quads,model.prop_quads,
+            model.n_tri,model.cnct_tris,model.prop_tris)
 
-    return K 
+    return K
 
 
 def model_K_aug(model):
     '''
     Given a model, return the global stiffness matrix (augmented) in BCOO format.
-    
+
     Parameters:
     ----------
     model:JAX_FEA's Model object
@@ -270,7 +274,8 @@ def model_K_aug(model):
     Augmented global stiffness matrix with bc in jax.experimental.sparse.BCOO
     '''
     K_aug = K_aug_func(model.crds,model.ndof,model.known_id,model.n_beamcol,model.cnct_beamcols,model.prop_beamcols,
-            model.n_quad,model.cnct_quads,model.prop_quads)
+            model.n_quad,model.cnct_quads,model.prop_quads,
+            model.n_tri,model.cnct_tris,model.prop_tris)
 
     return K_aug
 
