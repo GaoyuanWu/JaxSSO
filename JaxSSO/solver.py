@@ -79,7 +79,7 @@ def jax_dense_solve(K_aug,f_aug):
     Parameters:
     K_aug:
         jax.experimental.BCOO format of the augmented stiffness matrix
-    
+
     f_aug:
         ndarray, RHS of the (augmented) linear system
 
@@ -87,10 +87,29 @@ def jax_dense_solve(K_aug,f_aug):
     u:
         1darray of the discplacement vector corresponding to the dofs of the system
     '''
-    #Solving FEA, entended dimension
-
-    
     return jnp.linalg.solve(K_aug.todense(), f_aug)
+
+
+def jax_lstsq_solve(K_aug,f_aug):
+    '''
+    Dense least-squares solving of Ax=b using jnp.linalg.lstsq.
+
+    Robust to near-singular or singular systems (e.g., from drilling DOFs
+    in near-flat shell elements). Returns the minimum-norm solution.
+
+    Parameters:
+    K_aug:
+        jax.experimental.BCOO format of the augmented stiffness matrix
+
+    f_aug:
+        ndarray, RHS of the (augmented) linear system
+
+    Returns:
+    u:
+        1darray of the discplacement vector corresponding to the dofs of the system
+    '''
+    u, _, _, _ = jnp.linalg.lstsq(K_aug.todense(), f_aug)
+    return u
 
 #------------------------------------------
 # Solvers: sparse & direct from jax, GPU friendly

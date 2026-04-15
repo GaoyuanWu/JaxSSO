@@ -343,6 +343,8 @@ class Model():
         '''
         if which_solver == 'dense':
             return solver.jax_dense_solve
+        elif which_solver == 'lstsq':
+            return solver.jax_lstsq_solve
         elif which_solver == 'sparse':
             if enforce_scipy_sparse:
                 return solver.sci_sparse_solve
@@ -353,7 +355,7 @@ class Model():
                     print("Cannot use JAX's sparse solver because it only supports GPU at the moment")
                     return solver.sci_sparse_solve
         else:
-            print("Please select the right solver: dense or sparse")
+            print("Please select the right solver: dense, lstsq, or sparse")
 
     def solve(self,which_solver='sparse',enforce_scipy_sparse = True):
         '''
