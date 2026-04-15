@@ -1,4 +1,6 @@
 # Python
+tests/__pycache__/
+Examples/__pycache__/
 *.egg-info/
 .eggs/
 dist/
