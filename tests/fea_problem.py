@@ -60,6 +60,7 @@ def fea_problem_model():
         j_node = cnct[i,1]
         model.add_beamcol(i,i_node,j_node,E,G,Iy,Iz,J,A) 
 
+    model.model_ready()
     return model
 
     

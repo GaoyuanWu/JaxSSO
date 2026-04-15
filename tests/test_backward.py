@@ -17,6 +17,7 @@ jax.config.update("jax_enable_x64", True) #Enable jax 64-bit mode
     "which_solver",
     [
         "dense",
+        "lstsq",
         "sparse",
     ],
 )
