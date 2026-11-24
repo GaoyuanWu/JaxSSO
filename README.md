@@ -1,4 +1,9 @@
 # JaxSSO
+
+<p align="center">
+  <img src="data/animations/jaxsso_vi_shells_topo_shape_2.webp" alt="JaxSSO: simultaneous shape and topology optimization of a shell" width="100%">
+</p>
+
 A differentiable finite element analysis (FEA) solver for structural optimization, enabled by [JAX](https://github.com/google/jax).
 
 Developed by [Gaoyuan Wu](https://gaoyuanwu.github.io/) @ Princeton.
