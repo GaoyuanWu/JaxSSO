@@ -49,29 +49,30 @@ nlopt-python](https://pypi.org/project/nlopt/).
 
 
 ### Quickstart
-The project provides you with interactive examples with Google Colab for quick start. No installation locally is required. 
+The project provides you with interactive examples with Google Colab for quick start. No installation locally is required. The animations below show the recorded optimization history of each example.
 * [Integration of neural networks with differentiable physics](https://colab.research.google.com/github/GaoyuanWu/JaxSSO/blob/main/Examples/Neural_Network_Topo_Shape.ipynb)
 
-![alt text](data/images/NN_diff_physics.png)
+![Neural network + differentiable physics: shape and density evolving during training](data/animations/jaxsso_i_nn_topo_shape.webp)
 
 * [Shape optimization of continuous shell](https://colab.research.google.com/github/GaoyuanWu/JaxSSO/blob/main/Examples/Shells_Mannheim_Multihalle_Shape.ipynb)
 
-![alt text](data/images/Shape_cont.png)
+![Shape optimization of the Mannheim Multihalle shell](data/animations/jaxsso_ii_multihalle_shape.webp)
 
 * [Size (thickness) optimization of continuous shell](https://colab.research.google.com/github/GaoyuanWu/JaxSSO/blob/main/Examples/Shells_Mannheim_Multihalle_Size.ipynb)
 
-![title](data/images/Size.png)
+![Thickness optimization of the Mannheim Multihalle shell](data/animations/jaxsso_iii_multihalle_size.webp)
+
 * [Simultaneous shape & topology optimization](https://colab.research.google.com/github/GaoyuanWu/JaxSSO/blob/main/Examples/shells_topo_shape.ipynb)
 
-![title](data/images/Topo_1.png)
+![Simultaneous shape and topology optimization of a shell](data/animations/jaxsso_v_shells_topo_shape.webp)
 
 * [Simultaneous shape & topology optimization-2](https://colab.research.google.com/github/GaoyuanWu/JaxSSO/blob/main/Examples/shells_topo_shape_2.ipynb)
 
-![title](data/images/Topo_2.png)
+![Simultaneous shape and topology optimization of a shell, example 2](data/animations/jaxsso_vi_shells_topo_shape_2.webp)
 
 * [Shape optimization of grid shell](https://colab.research.google.com/github/GaoyuanWu/JaxSSO/blob/main/Examples/Gridshell_Station_Shape.ipynb): geometry from [Favilli et al. 2024](https://github.com/cnr-isti-vclab/GeomDL4GridShell#geometric-deep-learning-for-statics-aware-grid-shells)
 
-![alt text](data/images/Gridshell.png)
+![Shape optimization of a grid shell](data/animations/jaxsso_iv_gridshell_station_shape.webp)
 
 
 ## Cite us
