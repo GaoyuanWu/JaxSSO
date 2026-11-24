@@ -1,7 +1,7 @@
 # JaxSSO
 
 <p align="center">
-  <img src="data/animations/jaxsso_ii_multihalle_shape.webp" alt="JaxSSO: shape optimization of the Mannheim Multihalle shell" width="100%">
+  <img src="data/animations/jaxsso_i_nn_topo_shape.webp" alt="JaxSSO: training a neural network with differentiable physics to generate shell shape and topology" width="100%">
 </p>
 
 A differentiable finite element analysis (FEA) solver for structural optimization, enabled by [JAX](https://github.com/google/jax).
